@@ -334,7 +334,7 @@ describe("alien-id-transfer-hook (devnet)", () => {
       const attestationData = encodeAlienIdAttestationData({
         alienAccountAddress: userKeypair.publicKey.toBuffer(),
         alienIDVersion: 1,
-        alienChainId: "solana:devnet",
+        alienChainId: "1",
         solanaAddress: userKeypair.publicKey.toBuffer().toString("hex"),
         linkageProof: Buffer.alloc(64, 0xab), // mock 64-byte signature
         timestamp: BigInt(Math.floor(Date.now() / 1000)),
@@ -438,6 +438,122 @@ describe("alien-id-transfer-hook (devnet)", () => {
         failed = true;
       }
       assert.isTrue(failed, "transfer from non-attested wallet should fail");
+    });
+  });
+
+  describe("Transfer with expired attestation", () => {
+    const expiredUserKeypair = Keypair.generate();
+    let expiredUserAta: PublicKey;
+
+    before("fund expired user and create ATA", async () => {
+      await fundWallet(expiredUserKeypair.publicKey, 0.01);
+
+      expiredUserAta = getAssociatedTokenAddressSync(
+        mintKeypair.publicKey,
+        expiredUserKeypair.publicKey,
+        false,
+        TOKEN_2022_PROGRAM_ID
+      );
+
+      await send(
+        new Transaction()
+          .add(
+            createAssociatedTokenAccountInstruction(
+              admin.publicKey,
+              expiredUserAta,
+              expiredUserKeypair.publicKey,
+              mintKeypair.publicKey,
+              TOKEN_2022_PROGRAM_ID,
+              ASSOCIATED_TOKEN_PROGRAM_ID
+            )
+          )
+          .add(
+            createMintToInstruction(
+              mintKeypair.publicKey,
+              expiredUserAta,
+              admin.publicKey,
+              500_000_000,
+              [],
+              TOKEN_2022_PROGRAM_ID
+            )
+          )
+      );
+    });
+
+    it("creates an attestation with a short expiry and waits for it to expire", async () => {
+      [credentialPda] = findCredentialPda(admin.publicKey, CREDENTIAL_NAME);
+      [schemaPda] = findSchemaPda(credentialPda, SCHEMA_NAME);
+
+      const [attestationPda] = findAttestationPda(
+        credentialPda,
+        schemaPda,
+        expiredUserKeypair.publicKey
+      );
+
+      const attestationData = encodeAlienIdAttestationData({
+        alienAccountAddress: expiredUserKeypair.publicKey.toBuffer(),
+        alienIDVersion: 1,
+        alienChainId: "solana:devnet",
+        solanaAddress: expiredUserKeypair.publicKey.toBuffer().toString("hex"),
+        linkageProof: Buffer.alloc(64, 0xab),
+        timestamp: BigInt(Math.floor(Date.now() / 1000)),
+      });
+
+      // Set expiry 5 seconds from now — just enough for the SAS program to accept it
+      const expiry = BigInt(Math.floor(Date.now() / 1000) + 5);
+
+      const ix = buildCreateAttestationIx(
+        admin.publicKey,
+        admin.publicKey,
+        credentialPda,
+        schemaPda,
+        attestationPda,
+        expiredUserKeypair.publicKey,
+        attestationData,
+        expiry
+      );
+
+      await send(new Transaction().add(ix));
+
+      const account = await connection.getAccountInfo(attestationPda);
+      assert.isNotNull(account, "attestation account should exist");
+
+      // Wait for the attestation to expire (devnet clock can lag, use a safe buffer)
+      await new Promise((resolve) => setTimeout(resolve, 10_000));
+    });
+
+    it("rejects transfer with expired attestation", async () => {
+      const transferIx =
+        await createTransferCheckedWithTransferHookInstruction(
+          connection,
+          expiredUserAta,
+          mintKeypair.publicKey,
+          recipientAta,
+          expiredUserKeypair.publicKey,
+          BigInt(10_000_000),
+          MINT_DECIMALS,
+          [],
+          "confirmed",
+          TOKEN_2022_PROGRAM_ID
+        );
+
+      const tx = new Transaction().add(transferIx);
+      tx.feePayer = admin.publicKey;
+      const { blockhash } = await connection.getLatestBlockhash();
+      tx.recentBlockhash = blockhash;
+
+      let failed = false;
+      try {
+        await sendAndConfirmTransaction(
+          connection,
+          tx,
+          [admin, expiredUserKeypair],
+          { commitment: "confirmed" }
+        );
+      } catch {
+        failed = true;
+      }
+      assert.isTrue(failed, "transfer with expired attestation should fail");
     });
   });
 
