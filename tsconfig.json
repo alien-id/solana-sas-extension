@@ -5,6 +5,11 @@
     "lib": ["es2020"],
     "module": "commonjs",
     "target": "es2020",
-    "esModuleInterop": true
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "paths": {
+      "credential-signer-types": ["./external/solana-attestation-signer/target/types/credential_signer"],
+      "session-registry-types": ["./external/solana-attestation-signer/target/types/session_registry"]
+    }
   }
 }

@@ -1,5 +1,5 @@
 import * as anchor from "@coral-xyz/anchor";
-import { Program } from "@coral-xyz/anchor";
+import { BN, Program } from "@coral-xyz/anchor";
 import { AlienIdTransferHook } from "../target/types/alien_id_transfer_hook";
 import {
   PublicKey,
@@ -24,22 +24,54 @@ import {
 import { assert } from "chai";
 import {
   SAS_PROGRAM_ID,
-  findCredentialPda,
-  findSchemaPda,
-  findAttestationPda,
   findHookConfigPda,
   findExtraAccountMetaListPda,
   findWhitelistEntryPda,
-  buildCreateCredentialIx,
-  buildCreateSchemaIx,
-  buildCreateAttestationIx,
   MINT_DECIMALS,
-  CREDENTIAL_NAME,
-  SCHEMA_NAME,
-  SCHEMA_LAYOUT,
-  SCHEMA_FIELD_NAMES,
-  encodeAlienIdAttestationData,
 } from "../sdk";
+import {
+  deriveAttestationPda,
+  deriveCredentialPda,
+  deriveSchemaPda,
+  deriveEventAuthorityAddress,
+  getChangeAuthorizedSignersInstruction,
+  getCreateCredentialInstruction,
+  getCreateSchemaInstruction,
+} from "sas-lib";
+import { address } from "@solana/kit";
+import { createKeyPairSignerFromPrivateKeyBytes } from "@solana/signers";
+import axios from "axios";
+
+// ---------------------------------------------------------------------------
+// solana-attestation-signer constants
+// ---------------------------------------------------------------------------
+
+const CREDENTIAL_SIGNER_PROGRAM_ID = new PublicKey(
+  "9cstDz8WWRAFaq1vVpTjfHz6tjgh6SJaqYFeZWi1pFHG"
+);
+const SESSION_REGISTRY_PROGRAM_ID = new PublicKey(
+  "DeHa6pyZ2CFSbQQiNMm7FgoCXqmkX6tXG77C4Qycpta6"
+);
+
+const SAS_CREDENTIAL_NAME = "alien_credential";
+const SAS_SCHEMA_NAME = "alien_schema";
+const SAS_SCHEMA_LAYOUT = new Uint8Array([12]); // String = session_address
+const SAS_SCHEMA_FIELD_NAMES = ["session_address"];
+
+const ORACLE_API_URL =
+  process.env.ORACLE_API_URL ?? "https://cred-signer.develop.alien-api.com";
+
+// ---------------------------------------------------------------------------
+// Session fixture (same as used in solana-attestation-signer tests)
+// ---------------------------------------------------------------------------
+
+const TEST_SESSION = {
+  address: "00000001010000000000000200000000",
+  publicKey:
+    "786fa362d6db3570d44620f25902b86162a62b4a5899860bc1d3525d759a8b84",
+  privateKey:
+    "83b05785561dfeb15e7b4376136eb3b70f727ae60c574b66bf0533550a41265f",
+};
 
 describe("alien-id-transfer-hook (devnet)", () => {
   const provider = anchor.AnchorProvider.env();
@@ -55,13 +87,31 @@ describe("alien-id-transfer-hook (devnet)", () => {
   const recipientKeypair = Keypair.generate();
   const whitelistedKeypair = Keypair.generate();
 
+  // PDAs derived from solana-attestation-signer
   let credentialPda: PublicKey;
   let schemaPda: PublicKey;
+  let credentialPdaAddress: any;
+  let schemaPdaAddress: any;
+  let eventAuthorityPda: any;
+
+  let programStatePda: PublicKey;
+  let credentialSignerPda: PublicKey;
+  let sessionRegistryPda: PublicKey;
+
   let hookConfigPda: PublicKey;
   let extraAccountMetaListPda: PublicKey;
   let userAta: PublicKey;
   let recipientAta: PublicKey;
   let whitelistedAta: PublicKey;
+
+  // Oracle data (populated in before hook)
+  let credentialAuthority: any;
+  let oraclePublicKey: PublicKey;
+  let ed25519: any;
+
+  // ---------------------------------------------------------------------------
+  // Helpers
+  // ---------------------------------------------------------------------------
 
   async function fundWallet(pubkey: PublicKey, sol = 0.5) {
     const tx = new Transaction().add(
@@ -88,57 +138,256 @@ describe("alien-id-transfer-hook (devnet)", () => {
     });
   }
 
+  async function getOracleSignature(
+    sessionAddress: string,
+    solanaAddress: string
+  ): Promise<{ signature: Buffer; message: Uint8Array; timestamp: number }> {
+    const timestamp = Math.floor(Date.now() / 1000);
+    const timestampBuffer = Buffer.allocUnsafe(8);
+    timestampBuffer.writeBigInt64LE(BigInt(timestamp), 0);
+    const message = Buffer.concat([
+      Buffer.from(sessionAddress),
+      Buffer.from(solanaAddress),
+      timestampBuffer,
+    ]);
+
+    const sessionSignature = await ed25519.signAsync(
+      Buffer.from(solanaAddress),
+      ed25519.etc.hexToBytes(TEST_SESSION.privateKey)
+    );
+
+    const response = await axios.get(
+      `${ORACLE_API_URL}/sign?session_address=${sessionAddress}&solana_address=${solanaAddress}&session_signature=${Buffer.from(sessionSignature).toString("hex")}&timestamp=${timestamp}`
+    );
+
+    return {
+      signature: Buffer.from(response.data.signature, "hex"),
+      message,
+      timestamp,
+    };
+  }
+
+  async function createAttestationViaCredentialSigner(
+    payerKeypair: Keypair,
+    sessionAddress: string,
+    expirySeconds: number = 365 * 24 * 60 * 60
+  ): Promise<PublicKey> {
+    const payerAddressBase58 = payerKeypair.publicKey.toBase58();
+
+    const [attestationPdaAddress] = await deriveAttestationPda({
+      credential: credentialPdaAddress,
+      schema: schemaPdaAddress,
+      nonce: address(payerAddressBase58),
+    });
+    const attestationPda = new PublicKey(attestationPdaAddress);
+
+    const [sessionPda] = PublicKey.findProgramAddressSync(
+      [Buffer.from("session"), Buffer.from(sessionAddress)],
+      SESSION_REGISTRY_PROGRAM_ID
+    );
+    const [solanaPda] = PublicKey.findProgramAddressSync(
+      [Buffer.from("solana"), payerKeypair.publicKey.toBuffer()],
+      SESSION_REGISTRY_PROGRAM_ID
+    );
+
+    const { signature: oracleSignature, message: oracleSignatureMessage, timestamp } =
+      await getOracleSignature(sessionAddress, payerAddressBase58);
+
+    const expiry = new BN(Math.floor(Date.now() / 1000) + expirySeconds);
+
+    const oracleEd25519Instruction =
+      anchor.web3.Ed25519Program.createInstructionWithPublicKey({
+        publicKey: oraclePublicKey.toBuffer(),
+        message: oracleSignatureMessage,
+        signature: oracleSignature,
+      });
+
+    // Manually construct credential_signer createAttestation instruction
+    // since the IDL types are generated by anchor build in the submodule
+    const credentialSignerProgram = new anchor.Program(
+      require("../external/solana-attestation-signer/target/idl/credential_signer.json"),
+      provider
+    );
+
+    const createAttestationInstruction =
+      await credentialSignerProgram.methods
+        .createAttestation(
+          sessionAddress,
+          Array.from(oracleSignature),
+          expiry,
+          new BN(timestamp)
+        )
+        .accountsStrict({
+          programState: programStatePda,
+          credentialSigner: credentialSignerPda,
+          payer: payerKeypair.publicKey,
+          credential: credentialPda,
+          schema: schemaPda,
+          attestation: attestationPda,
+          systemProgram: SystemProgram.programId,
+          attestationProgram: SAS_PROGRAM_ID,
+          instructions: anchor.web3.SYSVAR_INSTRUCTIONS_PUBKEY,
+          sessionRegistryProgram: SESSION_REGISTRY_PROGRAM_ID,
+          sessionRegistry: sessionRegistryPda,
+          sessionEntry: sessionPda,
+          solanaEntry: solanaPda,
+        })
+        .instruction();
+
+    const tx = new Transaction().add(
+      oracleEd25519Instruction,
+      createAttestationInstruction
+    );
+    tx.feePayer = admin.publicKey;
+    const { blockhash } = await connection.getLatestBlockhash();
+    tx.recentBlockhash = blockhash;
+
+    await sendAndConfirmTransaction(
+      connection,
+      tx,
+      [admin, payerKeypair],
+      { commitment: "confirmed", skipPreflight: false, maxRetries: 5 }
+    );
+
+    return attestationPda;
+  }
+
   // ---------------------------------------------------------------------------
   // Global setup
   // ---------------------------------------------------------------------------
 
+  before("load ed25519 and derive PDAs", async () => {
+    ed25519 = await import("@noble/ed25519");
+
+    // credentialAuthority mirrors the admin wallet (same as in solana-attestation-signer scripts)
+    const privateKeyBytes = admin.secretKey.slice(0, 32);
+    credentialAuthority = await createKeyPairSignerFromPrivateKeyBytes(privateKeyBytes);
+
+    // Derive credential and schema PDAs using sas-lib
+    [credentialPdaAddress] = await deriveCredentialPda({
+      authority: credentialAuthority.address,
+      name: SAS_CREDENTIAL_NAME,
+    });
+    [schemaPdaAddress] = await deriveSchemaPda({
+      credential: credentialPdaAddress,
+      name: SAS_SCHEMA_NAME,
+      version: 1,
+    });
+    eventAuthorityPda = await deriveEventAuthorityAddress();
+
+    credentialPda = new PublicKey(credentialPdaAddress);
+    schemaPda = new PublicKey(schemaPdaAddress);
+
+    // credential_signer program PDAs
+    [programStatePda] = PublicKey.findProgramAddressSync(
+      [Buffer.from("program_state")],
+      CREDENTIAL_SIGNER_PROGRAM_ID
+    );
+    [credentialSignerPda] = PublicKey.findProgramAddressSync(
+      [Buffer.from("credential_signer")],
+      CREDENTIAL_SIGNER_PROGRAM_ID
+    );
+    [sessionRegistryPda] = PublicKey.findProgramAddressSync(
+      [Buffer.from("session_registry")],
+      SESSION_REGISTRY_PROGRAM_ID
+    );
+  });
+
   before("fund test wallets", async () => {
-    await fundWallet(userKeypair.publicKey, 0.01);
+    await fundWallet(userKeypair.publicKey, 0.5);
     await fundWallet(recipientKeypair.publicKey, 0.01);
     await fundWallet(whitelistedKeypair.publicKey, 0.01);
   });
 
-  describe("SAS setup", () => {
-    it("creates a SAS credential (idempotent)", async () => {
-      [credentialPda] = findCredentialPda(admin.publicKey, CREDENTIAL_NAME);
+  // ---------------------------------------------------------------------------
+  // solana-attestation-signer setup
+  // ---------------------------------------------------------------------------
 
+  describe("solana-attestation-signer setup", () => {
+    it("fetches oracle public key", async () => {
+      const response = await axios.get(`${ORACLE_API_URL}/system/signer`);
+      oraclePublicKey = new PublicKey(
+        Buffer.from(response.data.public_key, "hex")
+      );
+      assert.isNotNull(oraclePublicKey, "oracle public key should be set");
+    });
+
+    it("initializes the session_registry program (idempotent)", async () => {
+      const existing = await connection.getAccountInfo(sessionRegistryPda);
+      if (!existing) {
+        const sessionRegistryProgram = new anchor.Program(
+          require("../external/solana-attestation-signer/target/idl/session_registry.json"),
+          provider
+        );
+        await sessionRegistryProgram.methods
+          .initialize()
+          .accountsStrict({
+            registry: sessionRegistryPda,
+            authority: admin.publicKey,
+            systemProgram: SystemProgram.programId,
+          })
+          .rpc({ commitment: "confirmed" });
+      }
+      const account = await connection.getAccountInfo(sessionRegistryPda);
+      assert.isNotNull(account, "session registry account should exist");
+    });
+
+    it("creates SAS credential (idempotent)", async () => {
       const existing = await connection.getAccountInfo(credentialPda);
       if (!existing) {
-        const ix = buildCreateCredentialIx(
-          admin.publicKey,
-          admin.publicKey,
-          credentialPda,
-          CREDENTIAL_NAME,
-          [admin.publicKey]
-        );
+        const createCredentialIx = getCreateCredentialInstruction({
+          payer: credentialAuthority,
+          authority: credentialAuthority,
+          signers: [credentialAuthority.address],
+          credential: credentialPdaAddress,
+          name: SAS_CREDENTIAL_NAME,
+        });
+
+        const ix = new anchor.web3.TransactionInstruction({
+          keys: [
+            { pubkey: admin.publicKey, isSigner: true, isWritable: true },
+            { pubkey: credentialPda, isSigner: false, isWritable: true },
+            { pubkey: admin.publicKey, isSigner: true, isWritable: false },
+            { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+          ],
+          programId: new PublicKey(createCredentialIx.programAddress),
+          data: Buffer.from(createCredentialIx.data),
+        });
+
         await send(new Transaction().add(ix));
       }
 
       const account = await connection.getAccountInfo(credentialPda);
       assert.isNotNull(account, "credential account should exist");
-      assert.equal(
-        account!.owner.toBase58(),
-        SAS_PROGRAM_ID.toBase58(),
-        "owned by SAS program"
-      );
+      assert.equal(account!.owner.toBase58(), SAS_PROGRAM_ID.toBase58());
     });
 
-    it("creates a SAS schema (idempotent)", async () => {
-      [credentialPda] = findCredentialPda(admin.publicKey, CREDENTIAL_NAME);
-      [schemaPda] = findSchemaPda(credentialPda, SCHEMA_NAME);
-
+    it("creates SAS schema (idempotent)", async () => {
       const existing = await connection.getAccountInfo(schemaPda);
       if (!existing) {
-        const ix = buildCreateSchemaIx(
-          admin.publicKey,
-          admin.publicKey,
-          credentialPda,
-          schemaPda,
-          SCHEMA_NAME,
-          "Identity verification schema for Alien ID",
-          SCHEMA_LAYOUT,
-          SCHEMA_FIELD_NAMES
-        );
+        const createSchemaIx = getCreateSchemaInstruction({
+          payer: credentialAuthority,
+          authority: credentialAuthority,
+          credential: credentialPdaAddress,
+          schema: schemaPdaAddress,
+          name: SAS_SCHEMA_NAME,
+          description: "Schema for verifying user identity information",
+          layout: SAS_SCHEMA_LAYOUT,
+          fieldNames: SAS_SCHEMA_FIELD_NAMES,
+        });
+
+        const ix = new anchor.web3.TransactionInstruction({
+          keys: [
+            { pubkey: admin.publicKey, isSigner: true, isWritable: true },
+            { pubkey: admin.publicKey, isSigner: true, isWritable: false },
+            { pubkey: credentialPda, isSigner: false, isWritable: false },
+            { pubkey: schemaPda, isSigner: false, isWritable: true },
+            { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+          ],
+          programId: new PublicKey(createSchemaIx.programAddress),
+          data: Buffer.from(createSchemaIx.data),
+        });
+
         await send(new Transaction().add(ix));
       }
 
@@ -146,7 +395,73 @@ describe("alien-id-transfer-hook (devnet)", () => {
       assert.isNotNull(account, "schema account should exist");
       assert.equal(account!.owner.toBase58(), SAS_PROGRAM_ID.toBase58());
     });
+
+    it("initializes the credential_signer program (idempotent)", async () => {
+      const existing = await connection.getAccountInfo(programStatePda);
+      if (!existing) {
+        const credentialSignerProgram = new anchor.Program(
+          require("../external/solana-attestation-signer/target/idl/credential_signer.json"),
+          provider
+        );
+        await credentialSignerProgram.methods
+          .initialize(
+            oraclePublicKey,
+            credentialPda,
+            schemaPda,
+            new PublicKey(eventAuthorityPda),
+            SESSION_REGISTRY_PROGRAM_ID
+          )
+          .accountsStrict({
+            programState: programStatePda,
+            credentialSigner: credentialSignerPda,
+            admin: admin.publicKey,
+            systemProgram: SystemProgram.programId,
+          })
+          .rpc({ commitment: "confirmed" });
+
+        // Update SAS credential signers to credentialSignerPda
+        const changeSignerIx = getChangeAuthorizedSignersInstruction({
+          payer: credentialAuthority,
+          authority: credentialAuthority,
+          credential: credentialPdaAddress,
+          signers: [address(credentialSignerPda.toString())],
+        });
+
+        const changeSignerInstruction = new anchor.web3.TransactionInstruction({
+          keys: [
+            { pubkey: admin.publicKey, isSigner: true, isWritable: true },
+            { pubkey: admin.publicKey, isSigner: true, isWritable: false },
+            { pubkey: credentialPda, isSigner: false, isWritable: true },
+            { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+          ],
+          programId: new PublicKey(changeSignerIx.programAddress),
+          data: Buffer.from(changeSignerIx.data),
+        });
+
+        await send(new Transaction().add(changeSignerInstruction));
+
+        // Add credentialSignerPda as signer in session_registry
+        const sessionRegistryProgram = new anchor.Program(
+          require("../external/solana-attestation-signer/target/idl/session_registry.json"),
+          provider
+        );
+        await sessionRegistryProgram.methods
+          .addSigner(credentialSignerPda)
+          .accountsStrict({
+            registry: sessionRegistryPda,
+            authority: admin.publicKey,
+          })
+          .rpc({ commitment: "confirmed" });
+      }
+
+      const account = await connection.getAccountInfo(programStatePda);
+      assert.isNotNull(account, "program state account should exist");
+    });
   });
+
+  // ---------------------------------------------------------------------------
+  // Hook program setup
+  // ---------------------------------------------------------------------------
 
   describe("Hook program setup", () => {
     it("creates a token-2022 mint with the transfer hook", async () => {
@@ -190,9 +505,7 @@ describe("alien-id-transfer-hook (devnet)", () => {
       assert.isNotNull(mintInfo, "mint account should exist");
     });
 
-    it("initializes the hook config", async () => {
-      [credentialPda] = findCredentialPda(admin.publicKey, CREDENTIAL_NAME);
-      [schemaPda] = findSchemaPda(credentialPda, SCHEMA_NAME);
+    it("initializes the hook config with credential/schema from credential_signer", async () => {
       [hookConfigPda] = findHookConfigPda(mintKeypair.publicKey, program.programId);
 
       const existing = await connection.getAccountInfo(hookConfigPda);
@@ -320,38 +633,16 @@ describe("alien-id-transfer-hook (devnet)", () => {
     });
   });
 
+  // ---------------------------------------------------------------------------
+  // Transfer with valid attestation (created via credential_signer)
+  // ---------------------------------------------------------------------------
+
   describe("Transfer with valid attestation", () => {
-    it("creates an attestation for the user (nonce = user pubkey)", async () => {
-      [credentialPda] = findCredentialPda(admin.publicKey, CREDENTIAL_NAME);
-      [schemaPda] = findSchemaPda(credentialPda, SCHEMA_NAME);
-
-      const [attestationPda] = findAttestationPda(
-        credentialPda,
-        schemaPda,
-        userKeypair.publicKey
+    it("creates an attestation for the user via credential_signer (oracle-backed)", async () => {
+      const attestationPda = await createAttestationViaCredentialSigner(
+        userKeypair,
+        TEST_SESSION.address
       );
-
-      const attestationData = encodeAlienIdAttestationData({
-        alienAccountAddress: userKeypair.publicKey.toBuffer(),
-        alienIDVersion: 1,
-        alienChainId: "1",
-        solanaAddress: userKeypair.publicKey.toBuffer().toString("hex"),
-        linkageProof: Buffer.alloc(64, 0xab), // mock 64-byte signature
-        timestamp: BigInt(Math.floor(Date.now() / 1000)),
-      });
-
-      const ix = buildCreateAttestationIx(
-        admin.publicKey,
-        admin.publicKey,
-        credentialPda,
-        schemaPda,
-        attestationPda,
-        userKeypair.publicKey,
-        attestationData,
-        0n
-      );
-
-      await send(new Transaction().add(ix));
 
       const account = await connection.getAccountInfo(attestationPda);
       assert.isNotNull(account, "attestation account should exist");
@@ -392,6 +683,10 @@ describe("alien-id-transfer-hook (devnet)", () => {
       assert.equal(balance.value.amount, "100000000");
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // Transfer without attestation
+  // ---------------------------------------------------------------------------
 
   describe("Transfer without attestation", () => {
     it("rejects a transfer from a non-attested, non-whitelisted wallet", async () => {
@@ -441,12 +736,16 @@ describe("alien-id-transfer-hook (devnet)", () => {
     });
   });
 
+  // ---------------------------------------------------------------------------
+  // Transfer with expired attestation (created via credential_signer, short expiry)
+  // ---------------------------------------------------------------------------
+
   describe("Transfer with expired attestation", () => {
     const expiredUserKeypair = Keypair.generate();
     let expiredUserAta: PublicKey;
 
     before("fund expired user and create ATA", async () => {
-      await fundWallet(expiredUserKeypair.publicKey, 0.01);
+      await fundWallet(expiredUserKeypair.publicKey, 0.5);
 
       expiredUserAta = getAssociatedTokenAddressSync(
         mintKeypair.publicKey,
@@ -480,45 +779,17 @@ describe("alien-id-transfer-hook (devnet)", () => {
       );
     });
 
-    it("creates an attestation with a short expiry and waits for it to expire", async () => {
-      [credentialPda] = findCredentialPda(admin.publicKey, CREDENTIAL_NAME);
-      [schemaPda] = findSchemaPda(credentialPda, SCHEMA_NAME);
-
-      const [attestationPda] = findAttestationPda(
-        credentialPda,
-        schemaPda,
-        expiredUserKeypair.publicKey
+    it("creates an attestation with a short expiry via credential_signer and waits for it to expire", async () => {
+      const attestationPda = await createAttestationViaCredentialSigner(
+        expiredUserKeypair,
+        TEST_SESSION.address,
+        5 // 5 seconds expiry
       );
-
-      const attestationData = encodeAlienIdAttestationData({
-        alienAccountAddress: expiredUserKeypair.publicKey.toBuffer(),
-        alienIDVersion: 1,
-        alienChainId: "solana:devnet",
-        solanaAddress: expiredUserKeypair.publicKey.toBuffer().toString("hex"),
-        linkageProof: Buffer.alloc(64, 0xab),
-        timestamp: BigInt(Math.floor(Date.now() / 1000)),
-      });
-
-      // Set expiry 5 seconds from now — just enough for the SAS program to accept it
-      const expiry = BigInt(Math.floor(Date.now() / 1000) + 5);
-
-      const ix = buildCreateAttestationIx(
-        admin.publicKey,
-        admin.publicKey,
-        credentialPda,
-        schemaPda,
-        attestationPda,
-        expiredUserKeypair.publicKey,
-        attestationData,
-        expiry
-      );
-
-      await send(new Transaction().add(ix));
 
       const account = await connection.getAccountInfo(attestationPda);
       assert.isNotNull(account, "attestation account should exist");
 
-      // Wait for the attestation to expire (devnet clock can lag, use a safe buffer)
+      // Wait for the attestation to expire
       await new Promise((resolve) => setTimeout(resolve, 10_000));
     });
 
@@ -556,6 +827,10 @@ describe("alien-id-transfer-hook (devnet)", () => {
       assert.isTrue(failed, "transfer with expired attestation should fail");
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // Whitelist bypass
+  // ---------------------------------------------------------------------------
 
   describe("Whitelist bypass", () => {
     it("admin adds whitelisted wallet to the whitelist", async () => {
@@ -681,6 +956,10 @@ describe("alien-id-transfer-hook (devnet)", () => {
       assert.isTrue(failed, "de-whitelisted wallet transfer should fail");
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // Config management
+  // ---------------------------------------------------------------------------
 
   describe("Config management", () => {
     it("admin can update the hook config", async () => {

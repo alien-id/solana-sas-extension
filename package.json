@@ -6,7 +6,13 @@
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.32.1",
-    "@solana/spl-token": "^0.4.9"
+    "@noble/ed25519": "^2.3.0",
+    "@solana/kit": "^2.1.0",
+    "@solana/signers": "^2.1.1",
+    "@solana/spl-token": "^0.4.9",
+    "axios": "^1.11.0",
+    "bn.js": "^5.2.1",
+    "sas-lib": "^1.0.9"
   },
   "devDependencies": {
     "chai": "^4.3.4",
