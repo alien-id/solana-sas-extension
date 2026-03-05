@@ -7,18 +7,18 @@ skip-lint = false
 
 [programs.localnet]
 alien_id_transfer_hook = "HaixGEih7RhVyH3RTy57hwoRk7WURghhBAJ7eHRoHcbx"
-credential_signer = "9cstDz8WWRAFaq1vVpTjfHz6tjgh6SJaqYFeZWi1pFHG"
-session_registry = "DeHa6pyZ2CFSbQQiNMm7FgoCXqmkX6tXG77C4Qycpta6"
+credential_signer = "E5w9QEcDRgt7vra5dXi878Cz8buPjCuefSEbTYrWqjB4"
+session_registry = "EDPkFGFFrYeVL5V77mQzE3cHo3nUSzTPMJzUeJmBp1Wc"
 
 [programs.devnet]
 alien_id_transfer_hook = "HaixGEih7RhVyH3RTy57hwoRk7WURghhBAJ7eHRoHcbx"
-credential_signer = "9cstDz8WWRAFaq1vVpTjfHz6tjgh6SJaqYFeZWi1pFHG"
-session_registry = "DeHa6pyZ2CFSbQQiNMm7FgoCXqmkX6tXG77C4Qycpta6"
+credential_signer = "E5w9QEcDRgt7vra5dXi878Cz8buPjCuefSEbTYrWqjB4"
+session_registry = "EDPkFGFFrYeVL5V77mQzE3cHo3nUSzTPMJzUeJmBp1Wc"
 
 [programs.mainnet]
 alien_id_transfer_hook = "HaixGEih7RhVyH3RTy57hwoRk7WURghhBAJ7eHRoHcbx"
-credential_signer = "9cstDz8WWRAFaq1vVpTjfHz6tjgh6SJaqYFeZWi1pFHG"
-session_registry = "DeHa6pyZ2CFSbQQiNMm7FgoCXqmkX6tXG77C4Qycpta6"
+credential_signer = "E5w9QEcDRgt7vra5dXi878Cz8buPjCuefSEbTYrWqjB4"
+session_registry = "EDPkFGFFrYeVL5V77mQzE3cHo3nUSzTPMJzUeJmBp1Wc"
 
 
 [registry]
@@ -41,9 +41,9 @@ address = "22zoJMtdu4tQc2PzL74ZUT7FrwgB1Udec8DdW4yw4BdG"
 program = "external/solana-attestation-signer/external/solana-attestation-service/target/deploy/solana_attestation_service.so"
 
 [[test.genesis]]
-address = "9cstDz8WWRAFaq1vVpTjfHz6tjgh6SJaqYFeZWi1pFHG"
+address = "E5w9QEcDRgt7vra5dXi878Cz8buPjCuefSEbTYrWqjB4"
 program = "external/solana-attestation-signer/target/deploy/credential_signer.so"
 
 [[test.genesis]]
-address = "DeHa6pyZ2CFSbQQiNMm7FgoCXqmkX6tXG77C4Qycpta6"
+address = "EDPkFGFFrYeVL5V77mQzE3cHo3nUSzTPMJzUeJmBp1Wc"
 program = "external/solana-attestation-signer/target/deploy/session_registry.so"

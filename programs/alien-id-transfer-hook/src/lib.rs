@@ -41,6 +41,10 @@ pub mod alien_id_transfer_hook {
         remove_from_whitelist::handler(ctx, wallet)
     }
 
+    pub fn transfer_authority(ctx: Context<TransferAuthority>) -> Result<()> {
+        transfer_authority::handler(ctx)
+    }
+
     pub fn initialize_extra_account_meta_list(
         ctx: Context<InitializeExtraAccountMetaList>,
     ) -> Result<()> {

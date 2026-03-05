@@ -48,10 +48,10 @@ import axios from "axios";
 // ---------------------------------------------------------------------------
 
 const CREDENTIAL_SIGNER_PROGRAM_ID = new PublicKey(
-  "9cstDz8WWRAFaq1vVpTjfHz6tjgh6SJaqYFeZWi1pFHG"
+  "E5w9QEcDRgt7vra5dXi878Cz8buPjCuefSEbTYrWqjB4"
 );
 const SESSION_REGISTRY_PROGRAM_ID = new PublicKey(
-  "DeHa6pyZ2CFSbQQiNMm7FgoCXqmkX6tXG77C4Qycpta6"
+  "EDPkFGFFrYeVL5V77mQzE3cHo3nUSzTPMJzUeJmBp1Wc"
 );
 
 const SAS_CREDENTIAL_NAME = "alien_credential";
@@ -991,6 +991,66 @@ describe("alien-id-transfer-hook", () => {
         failed = true;
       }
       assert.isTrue(failed, "de-whitelisted wallet transfer should fail");
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Authority transfer
+  // ---------------------------------------------------------------------------
+
+  describe("Authority transfer", () => {
+    it("admin transfers authority to a new admin, then new admin updates config", async () => {
+      const newAdmin = Keypair.generate();
+      await fundWallet(newAdmin.publicKey, 0.1);
+
+      await program.methods
+        .transferAuthority()
+        .accounts({
+          authority: admin.publicKey,
+          newAuthority: newAdmin.publicKey,
+          config: hookConfigPda,
+          mint: mintKeypair.publicKey,
+        })
+        .rpc({ commitment: "confirmed", skipPreflight: true });
+
+      const configAfter = await program.account.hookConfig.fetch(hookConfigPda);
+      assert.equal(configAfter.authority.toBase58(), newAdmin.publicKey.toBase58());
+
+      await program.methods
+        .transferAuthority()
+        .accounts({
+          authority: newAdmin.publicKey,
+          newAuthority: admin.publicKey,
+          config: hookConfigPda,
+          mint: mintKeypair.publicKey,
+        })
+        .signers([newAdmin])
+        .rpc({ commitment: "confirmed", skipPreflight: true });
+
+      const configRestored = await program.account.hookConfig.fetch(hookConfigPda);
+      assert.equal(configRestored.authority.toBase58(), admin.publicKey.toBase58());
+    });
+
+    it("non-admin cannot transfer authority", async () => {
+      const attacker = Keypair.generate();
+      await fundWallet(attacker.publicKey, 0.1);
+
+      let failed = false;
+      try {
+        await program.methods
+          .transferAuthority()
+          .accounts({
+            authority: attacker.publicKey,
+            newAuthority: attacker.publicKey,
+            config: hookConfigPda,
+            mint: mintKeypair.publicKey,
+          })
+          .signers([attacker])
+          .rpc({ commitment: "confirmed", skipPreflight: false });
+      } catch {
+        failed = true;
+      }
+      assert.isTrue(failed, "non-admin should not be able to transfer authority");
     });
   });
 

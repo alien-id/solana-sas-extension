@@ -17,6 +17,12 @@
    anchor keys sync
    ```
 
+   > **Note:** After syncing keys, the program IDs in `Anchor.toml` (both `[programs.*]` and `[[test.genesis]]` addresses) must match the addresses baked into the compiled `.so` files via `declare_id!`. If tests fail with `DeclaredProgramIdMismatch`, run the following to get the actual addresses and update `Anchor.toml` and the program ID constants in `tests/alien-id-transfer-hook.ts` accordingly:
+   > ```bash
+   > solana-keygen pubkey external/solana-attestation-signer/target/deploy/credential_signer-keypair.json
+   > solana-keygen pubkey external/solana-attestation-signer/target/deploy/session_registry-keypair.json
+   > ```
+
 4. **Install dependencies:**
    ```bash
    yarn
