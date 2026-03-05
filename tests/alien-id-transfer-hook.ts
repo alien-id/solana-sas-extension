@@ -16,6 +16,7 @@ import {
   createInitializeMintInstruction,
   createInitializeTransferHookInstruction,
   createAssociatedTokenAccountInstruction,
+  createAssociatedTokenAccountIdempotentInstruction,
   getAssociatedTokenAddressSync,
   createMintToInstruction,
   createTransferCheckedWithTransferHookInstruction,
@@ -66,14 +67,32 @@ const ORACLE_API_URL =
 // ---------------------------------------------------------------------------
 
 const TEST_SESSION = {
-  address: "00000001010000000000000200000000",
-  publicKey:
-    "786fa362d6db3570d44620f25902b86162a62b4a5899860bc1d3525d759a8b84",
-  privateKey:
-    "83b05785561dfeb15e7b4376136eb3b70f727ae60c574b66bf0533550a41265f",
+  address: '000000010100000000000550ddb1afe5',
+  publicKey: '09ac4562cd3c12359d396bbd8e07f296befbcaa50a01eb3d09bef7e3f963be7e',
+  privateKey: '30887543650595e4bbdb728e6e5ea013b6e164023d1678a7be42ec5b74077269'
 };
 
-describe("alien-id-transfer-hook (devnet)", () => {
+const TEST_SESSION_2 = {
+  address: '0000000101000000000005567ca6f18c',
+  publicKey: 'bd4c0e1e0f7cf5938664baa07b74b662ac1e35603e79efd96a6dceb59e4d72e5',
+  privateKey: '3b7777047f9a4bb1318530c1a5b4e695766232139b4565fe9b31d3e5b76c2c77'
+};
+
+const CERTIFICANT_SECRET_KEY = new Uint8Array([
+  174, 47, 154, 16, 202, 193, 206, 113, 199, 190, 53, 133, 169, 175, 31, 56,
+  222, 53, 138, 189, 224, 216, 117, 173, 10, 149, 53, 45, 73, 251, 237, 246,
+  15, 185, 186, 82, 177, 240, 148, 69, 241, 227, 167, 80, 141, 89, 240, 121,
+  121, 35, 172, 247, 68, 251, 226, 218, 48, 63, 176, 109, 168, 89, 238, 135,
+]);
+
+const CERTIFICANT_SECRET_KEY_2 = new Uint8Array([
+  125, 8, 97, 157, 178, 213, 172, 185, 173, 89, 168, 215, 42, 89, 224, 120,
+  7, 18, 160, 135, 186, 180, 74, 140, 69, 9, 111, 65, 83, 138, 81, 241,
+  217, 163, 81, 18, 185, 154, 80, 236, 6, 157, 155, 37, 125, 212, 251, 109,
+  146, 110, 119, 235, 203, 121, 185, 170, 27, 115, 148, 120, 209, 58, 37, 227,
+]);
+
+describe("alien-id-transfer-hook", () => {
   const provider = anchor.AnchorProvider.env();
   anchor.setProvider(provider);
 
@@ -81,9 +100,10 @@ describe("alien-id-transfer-hook (devnet)", () => {
     .AlienIdTransferHook as Program<AlienIdTransferHook>;
   const connection = provider.connection;
   const admin = (provider.wallet as anchor.Wallet).payer;
+  const isDevnet = connection.rpcEndpoint.includes("devnet");
 
   const mintKeypair = Keypair.generate();
-  const userKeypair = Keypair.generate();
+  const userKeypair = Keypair.fromSecretKey(CERTIFICANT_SECRET_KEY);
   const recipientKeypair = Keypair.generate();
   const whitelistedKeypair = Keypair.generate();
 
@@ -139,26 +159,29 @@ describe("alien-id-transfer-hook (devnet)", () => {
   }
 
   async function getOracleSignature(
-    sessionAddress: string,
+    session: { address: string; privateKey: string },
     solanaAddress: string
   ): Promise<{ signature: Buffer; message: Uint8Array; timestamp: number }> {
     const timestamp = Math.floor(Date.now() / 1000);
     const timestampBuffer = Buffer.allocUnsafe(8);
     timestampBuffer.writeBigInt64LE(BigInt(timestamp), 0);
     const message = Buffer.concat([
-      Buffer.from(sessionAddress),
+      Buffer.from(session.address),
       Buffer.from(solanaAddress),
       timestampBuffer,
     ]);
 
     const sessionSignature = await ed25519.signAsync(
       Buffer.from(solanaAddress),
-      ed25519.etc.hexToBytes(TEST_SESSION.privateKey)
+      ed25519.etc.hexToBytes(session.privateKey)
     );
 
     const response = await axios.get(
-      `${ORACLE_API_URL}/sign?session_address=${sessionAddress}&solana_address=${solanaAddress}&session_signature=${Buffer.from(sessionSignature).toString("hex")}&timestamp=${timestamp}`
-    );
+      `${ORACLE_API_URL}/sign?session_address=${session.address}&solana_address=${solanaAddress}&session_signature=${Buffer.from(sessionSignature).toString("hex")}&timestamp=${timestamp}`
+    ).catch((err) => {
+      const detail = err.response?.data ?? err.message;
+      throw new Error(`Oracle /sign failed (${err.response?.status}): ${JSON.stringify(detail)}`);
+    });
 
     return {
       signature: Buffer.from(response.data.signature, "hex"),
@@ -169,7 +192,7 @@ describe("alien-id-transfer-hook (devnet)", () => {
 
   async function createAttestationViaCredentialSigner(
     payerKeypair: Keypair,
-    sessionAddress: string,
+    session: { address: string; privateKey: string },
     expirySeconds: number = 365 * 24 * 60 * 60
   ): Promise<PublicKey> {
     const payerAddressBase58 = payerKeypair.publicKey.toBase58();
@@ -182,7 +205,7 @@ describe("alien-id-transfer-hook (devnet)", () => {
     const attestationPda = new PublicKey(attestationPdaAddress);
 
     const [sessionPda] = PublicKey.findProgramAddressSync(
-      [Buffer.from("session"), Buffer.from(sessionAddress)],
+      [Buffer.from("session"), Buffer.from(session.address)],
       SESSION_REGISTRY_PROGRAM_ID
     );
     const [solanaPda] = PublicKey.findProgramAddressSync(
@@ -191,7 +214,7 @@ describe("alien-id-transfer-hook (devnet)", () => {
     );
 
     const { signature: oracleSignature, message: oracleSignatureMessage, timestamp } =
-      await getOracleSignature(sessionAddress, payerAddressBase58);
+      await getOracleSignature(session, payerAddressBase58);
 
     const expiry = new BN(Math.floor(Date.now() / 1000) + expirySeconds);
 
@@ -212,7 +235,7 @@ describe("alien-id-transfer-hook (devnet)", () => {
     const createAttestationInstruction =
       await credentialSignerProgram.methods
         .createAttestation(
-          sessionAddress,
+          session.address,
           Array.from(oracleSignature),
           expiry,
           new BN(timestamp)
@@ -259,26 +282,6 @@ describe("alien-id-transfer-hook (devnet)", () => {
   before("load ed25519 and derive PDAs", async () => {
     ed25519 = await import("@noble/ed25519");
 
-    // credentialAuthority mirrors the admin wallet (same as in solana-attestation-signer scripts)
-    const privateKeyBytes = admin.secretKey.slice(0, 32);
-    credentialAuthority = await createKeyPairSignerFromPrivateKeyBytes(privateKeyBytes);
-
-    // Derive credential and schema PDAs using sas-lib
-    [credentialPdaAddress] = await deriveCredentialPda({
-      authority: credentialAuthority.address,
-      name: SAS_CREDENTIAL_NAME,
-    });
-    [schemaPdaAddress] = await deriveSchemaPda({
-      credential: credentialPdaAddress,
-      name: SAS_SCHEMA_NAME,
-      version: 1,
-    });
-    eventAuthorityPda = await deriveEventAuthorityAddress();
-
-    credentialPda = new PublicKey(credentialPdaAddress);
-    schemaPda = new PublicKey(schemaPdaAddress);
-
-    // credential_signer program PDAs
     [programStatePda] = PublicKey.findProgramAddressSync(
       [Buffer.from("program_state")],
       CREDENTIAL_SIGNER_PROGRAM_ID
@@ -291,6 +294,40 @@ describe("alien-id-transfer-hook (devnet)", () => {
       [Buffer.from("session_registry")],
       SESSION_REGISTRY_PROGRAM_ID
     );
+
+    if (isDevnet) {
+      const credentialSignerProgram = new anchor.Program(
+        require("../external/solana-attestation-signer/target/idl/credential_signer.json"),
+        provider
+      );
+      const programState = await credentialSignerProgram.account.programState.fetch(programStatePda);
+      credentialPda = programState.credentialPda;
+      schemaPda = programState.schemaPda;
+      oraclePublicKey = programState.oraclePubkey;
+      credentialPdaAddress = credentialPda.toString() as any;
+      schemaPdaAddress = schemaPda.toString() as any;
+      eventAuthorityPda = await deriveEventAuthorityAddress();
+    } else {
+      const privateKeyBytes = admin.secretKey.slice(0, 32);
+      credentialAuthority = await createKeyPairSignerFromPrivateKeyBytes(privateKeyBytes);
+
+      [credentialPdaAddress] = await deriveCredentialPda({
+        authority: credentialAuthority.address,
+        name: SAS_CREDENTIAL_NAME,
+      });
+      [schemaPdaAddress] = await deriveSchemaPda({
+        credential: credentialPdaAddress,
+        name: SAS_SCHEMA_NAME,
+        version: 1,
+      });
+      eventAuthorityPda = await deriveEventAuthorityAddress();
+
+      credentialPda = new PublicKey(credentialPdaAddress);
+      schemaPda = new PublicKey(schemaPdaAddress);
+
+      const signerResponse = await axios.get(`${ORACLE_API_URL}/system/signer`);
+      oraclePublicKey = new PublicKey(Buffer.from(signerResponse.data.public_key, "hex"));
+    }
   });
 
   before("fund test wallets", async () => {
@@ -303,7 +340,7 @@ describe("alien-id-transfer-hook (devnet)", () => {
   // solana-attestation-signer setup
   // ---------------------------------------------------------------------------
 
-  describe("solana-attestation-signer setup", () => {
+  (isDevnet ? describe.skip : describe)("solana-attestation-signer setup", () => {
     it("fetches oracle public key", async () => {
       const response = await axios.get(`${ORACLE_API_URL}/system/signer`);
       oraclePublicKey = new PublicKey(
@@ -641,7 +678,7 @@ describe("alien-id-transfer-hook (devnet)", () => {
     it("creates an attestation for the user via credential_signer (oracle-backed)", async () => {
       const attestationPda = await createAttestationViaCredentialSigner(
         userKeypair,
-        TEST_SESSION.address
+        TEST_SESSION
       );
 
       const account = await connection.getAccountInfo(attestationPda);
@@ -741,7 +778,7 @@ describe("alien-id-transfer-hook (devnet)", () => {
   // ---------------------------------------------------------------------------
 
   describe("Transfer with expired attestation", () => {
-    const expiredUserKeypair = Keypair.generate();
+    const expiredUserKeypair = Keypair.fromSecretKey(CERTIFICANT_SECRET_KEY_2);
     let expiredUserAta: PublicKey;
 
     before("fund expired user and create ATA", async () => {
@@ -757,7 +794,7 @@ describe("alien-id-transfer-hook (devnet)", () => {
       await send(
         new Transaction()
           .add(
-            createAssociatedTokenAccountInstruction(
+            createAssociatedTokenAccountIdempotentInstruction(
               admin.publicKey,
               expiredUserAta,
               expiredUserKeypair.publicKey,
@@ -782,7 +819,7 @@ describe("alien-id-transfer-hook (devnet)", () => {
     it("creates an attestation with a short expiry via credential_signer and waits for it to expire", async () => {
       const attestationPda = await createAttestationViaCredentialSigner(
         expiredUserKeypair,
-        TEST_SESSION.address,
+        TEST_SESSION_2,
         5 // 5 seconds expiry
       );
 

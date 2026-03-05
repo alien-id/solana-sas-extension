@@ -1,8 +1,31 @@
 # solana-sas-extension
 
-```
-anchor test --provider.cluster devnet
-```
+## Running Tests
+
+1. **Load submodules:**
+   ```bash
+   ./scripts/load-submodules.sh
+   ```
+
+2. **Build programs:**
+   ```bash
+   ./scripts/build-all.sh
+   ```
+
+3. **Sync keys** in the current project and external anchor:
+   ```bash
+   anchor keys sync
+   ```
+
+4. **Install dependencies:**
+   ```bash
+   yarn
+   ```
+
+5. **Run tests:**
+   ```bash
+   anchor test
+   ```
 
 ## Upgrading the Transfer Hook Program
 
