@@ -6,12 +6,12 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-alien_id_transfer_hook = "MgTHjBc8EFWk7bjJXrykaBS6DKizdG82JZhGwAnrBdR"
+alien_id_transfer_hook = "HaixGEih7RhVyH3RTy57hwoRk7WURghhBAJ7eHRoHcbx"
 credential_signer = "9cstDz8WWRAFaq1vVpTjfHz6tjgh6SJaqYFeZWi1pFHG"
 session_registry = "DeHa6pyZ2CFSbQQiNMm7FgoCXqmkX6tXG77C4Qycpta6"
 
 [programs.devnet]
-alien_id_transfer_hook = "MgTHjBc8EFWk7bjJXrykaBS6DKizdG82JZhGwAnrBdR"
+alien_id_transfer_hook = "HaixGEih7RhVyH3RTy57hwoRk7WURghhBAJ7eHRoHcbx"
 credential_signer = "9cstDz8WWRAFaq1vVpTjfHz6tjgh6SJaqYFeZWi1pFHG"
 session_registry = "DeHa6pyZ2CFSbQQiNMm7FgoCXqmkX6tXG77C4Qycpta6"
 
