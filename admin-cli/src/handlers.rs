@@ -101,6 +101,8 @@ pub fn handle_update_config(
 ) -> Result<()> {
     let program_id = program.id();
     let (config_address, _) = get_config_address(&mint, &program_id);
+    let (extra_account_meta_list_address, _) =
+        get_extra_account_meta_list_address(&mint, &program_id);
 
     println!("Updating config for mint: {}", mint);
 
@@ -110,6 +112,7 @@ pub fn handle_update_config(
             authority: program.payer(),
             config: config_address,
             mint,
+            extra_account_meta_list: extra_account_meta_list_address,
         })
         .args(alien_id_transfer_hook::instruction::UpdateConfig {
             credential,
