@@ -1067,7 +1067,7 @@ describe("alien-id-transfer-hook", () => {
   // ---------------------------------------------------------------------------
 
   describe("Config management", () => {
-    it("admin can update the hook config", async () => {
+    it("admin can update the hook config and ExtraAccountMetaList is refreshed atomically", async () => {
       const dummyCredential = Keypair.generate().publicKey;
       const dummySchema = Keypair.generate().publicKey;
       const dummySas = Keypair.generate().publicKey;
@@ -1078,6 +1078,7 @@ describe("alien-id-transfer-hook", () => {
           authority: admin.publicKey,
           config: hookConfigPda,
           mint: mintKeypair.publicKey,
+          extraAccountMetaList: extraAccountMetaListPda,
         })
         .rpc({ commitment: "confirmed", skipPreflight: true });
 
@@ -1085,6 +1086,109 @@ describe("alien-id-transfer-hook", () => {
       assert.equal(config.credential.toBase58(), dummyCredential.toBase58());
       assert.equal(config.schema.toBase58(), dummySchema.toBase58());
       assert.equal(config.sasProgram.toBase58(), dummySas.toBase58());
+
+      await program.methods
+        .updateConfig(credentialPda, schemaPda, SAS_PROGRAM_ID)
+        .accounts({
+          authority: admin.publicKey,
+          config: hookConfigPda,
+          mint: mintKeypair.publicKey,
+          extraAccountMetaList: extraAccountMetaListPda,
+        })
+        .rpc({ commitment: "confirmed", skipPreflight: true });
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Security: Non-admin calling initialize_extra_account_meta_list (F-02)
+  // ---------------------------------------------------------------------------
+
+  describe("Security: initialize_extra_account_meta_list authority check", () => {
+    it("rejects non-admin calling initialize_extra_account_meta_list", async () => {
+      const attacker = Keypair.generate();
+      await fundWallet(attacker.publicKey, 0.1);
+
+      let failed = false;
+      try {
+        await program.methods
+          .initializeExtraAccountMetaList()
+          .accounts({
+            payer: attacker.publicKey,
+            extraAccountMetaList: extraAccountMetaListPda,
+            mint: mintKeypair.publicKey,
+            config: hookConfigPda,
+            systemProgram: SystemProgram.programId,
+          })
+          .signers([attacker])
+          .rpc({ commitment: "confirmed", skipPreflight: false });
+      } catch {
+        failed = true;
+      }
+      assert.isTrue(failed, "non-admin should not be able to initialize extra account meta list");
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Security: Transfer with wrong credential/schema/sas_program (error path)
+  // ---------------------------------------------------------------------------
+
+  describe("Security: transfer with wrong credential/schema/sas_program", () => {
+    it("rejects transfer after config is updated to wrong values", async () => {
+      const wrongCredential = Keypair.generate().publicKey;
+      const wrongSchema = Keypair.generate().publicKey;
+      const wrongSas = Keypair.generate().publicKey;
+
+      await program.methods
+        .updateConfig(wrongCredential, wrongSchema, wrongSas)
+        .accounts({
+          authority: admin.publicKey,
+          config: hookConfigPda,
+          mint: mintKeypair.publicKey,
+          extraAccountMetaList: extraAccountMetaListPda,
+        })
+        .rpc({ commitment: "confirmed", skipPreflight: true });
+
+      const transferIx =
+        await createTransferCheckedWithTransferHookInstruction(
+          connection,
+          userAta,
+          mintKeypair.publicKey,
+          recipientAta,
+          userKeypair.publicKey,
+          BigInt(10_000_000),
+          MINT_DECIMALS,
+          [],
+          "confirmed",
+          TOKEN_2022_PROGRAM_ID
+        );
+
+      const tx = new Transaction().add(transferIx);
+      tx.feePayer = admin.publicKey;
+      const { blockhash } = await connection.getLatestBlockhash();
+      tx.recentBlockhash = blockhash;
+
+      let failed = false;
+      try {
+        await sendAndConfirmTransaction(
+          connection,
+          tx,
+          [admin, userKeypair],
+          { commitment: "confirmed" }
+        );
+      } catch {
+        failed = true;
+      }
+      assert.isTrue(failed, "transfer with wrong config values should fail");
+
+      await program.methods
+        .updateConfig(credentialPda, schemaPda, SAS_PROGRAM_ID)
+        .accounts({
+          authority: admin.publicKey,
+          config: hookConfigPda,
+          mint: mintKeypair.publicKey,
+          extraAccountMetaList: extraAccountMetaListPda,
+        })
+        .rpc({ commitment: "confirmed", skipPreflight: true });
     });
   });
 });

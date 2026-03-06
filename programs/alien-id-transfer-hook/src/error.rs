@@ -14,4 +14,8 @@ pub enum TransferHookError {
     SasProgramMismatch,
     #[msg("Authority must be the mint authority to initialize config")]
     UnauthorizedMintAuthority,
+    #[msg("Whitelist entry PDA does not match expected derivation")]
+    InvalidWhitelistEntry,
+    #[msg("Only the config authority can perform this action")]
+    Unauthorized,
 }

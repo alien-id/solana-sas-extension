@@ -52,8 +52,19 @@ pub struct TransferHook<'info> {
 }
 
 pub(crate) fn handler(ctx: Context<TransferHook>, _amount: u64) -> Result<()> {
-    // If the owner has a whitelisted entry (account owned by this program), skip attestation
     if ctx.accounts.whitelist_entry.owner == ctx.program_id {
+        let (expected_pda, _) = Pubkey::find_program_address(
+            &[
+                b"whitelist",
+                ctx.accounts.mint.key().as_ref(),
+                ctx.accounts.owner.key().as_ref(),
+            ],
+            ctx.program_id,
+        );
+        require!(
+            ctx.accounts.whitelist_entry.key() == expected_pda,
+            TransferHookError::InvalidWhitelistEntry
+        );
         msg!("Whitelisted owner, skipping attestation: {}", ctx.accounts.owner.key());
         return Ok(());
     }
@@ -111,6 +122,7 @@ pub(crate) fn handler(ctx: Context<TransferHook>, _amount: u64) -> Result<()> {
     let expiry =
         i64::from_le_bytes(data[expiry_offset..expiry_offset + 8].try_into().unwrap());
 
+    // expiry == 0 is treated as a never-expiring attestation; the clock check is skipped.
     if expiry != 0 {
         let clock = Clock::get()?;
         require!(

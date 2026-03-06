@@ -10,7 +10,10 @@ use crate::{constants::ATTESTATION_SEED, state::HookConfig};
 
 #[derive(Accounts)]
 pub struct InitializeExtraAccountMetaList<'info> {
-    #[account(mut)]
+    #[account(
+        mut,
+        constraint = payer.key() == config.authority @ crate::error::TransferHookError::Unauthorized
+    )]
     pub payer: Signer<'info>,
 
     /// CHECK: ExtraAccountMetaList Account, must use these seeds
@@ -93,7 +96,7 @@ pub(crate) fn handler(ctx: Context<InitializeExtraAccountMetaList>) -> Result<()
     let mint = ctx.accounts.mint.key();
     let signer_seeds: &[&[&[u8]]] = &[&[
         b"extra-account-metas",
-        &mint.as_ref(),
+        mint.as_ref(),
         &[ctx.bumps.extra_account_meta_list],
     ]];
 

@@ -1,7 +1,9 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token_interface::Mint;
+use spl_tlv_account_resolution::{account::ExtraAccountMeta, seeds::Seed, state::ExtraAccountMetaList};
+use spl_transfer_hook_interface::instruction::ExecuteInstruction;
 
-use crate::state::HookConfig;
+use crate::{constants::ATTESTATION_SEED, state::HookConfig};
 
 #[derive(Accounts)]
 pub struct UpdateConfig<'info> {
@@ -18,11 +20,16 @@ pub struct UpdateConfig<'info> {
     pub config: Account<'info, HookConfig>,
 
     pub mint: InterfaceAccount<'info, Mint>,
+
+    /// CHECK: ExtraAccountMetaList Account, re-initialized atomically with config update
+    #[account(
+        mut,
+        seeds = [b"extra-account-metas", mint.key().as_ref()],
+        bump
+    )]
+    pub extra_account_meta_list: AccountInfo<'info>,
 }
 
-/// Admin updates the credential/schema/sas_program in the config.
-/// Note: after updating you must also reinitialize the ExtraAccountMetaList
-/// so the new values are reflected in PDA resolution.
 pub(crate) fn handler(
     ctx: Context<UpdateConfig>,
     credential: Pubkey,
@@ -33,5 +40,44 @@ pub(crate) fn handler(
     config.credential = credential;
     config.schema = schema;
     config.sas_program = sas_program;
+
+    let account_metas = vec![
+        ExtraAccountMeta::new_with_seeds(
+            &[
+                Seed::Literal { bytes: b"config".to_vec() },
+                Seed::AccountKey { index: 1 },
+            ],
+            false,
+            false,
+        )?,
+        ExtraAccountMeta::new_with_pubkey(&credential, false, false)?,
+        ExtraAccountMeta::new_with_pubkey(&schema, false, false)?,
+        ExtraAccountMeta::new_with_pubkey(&sas_program, false, false)?,
+        ExtraAccountMeta::new_external_pda_with_seeds(
+            8,
+            &[
+                Seed::Literal { bytes: ATTESTATION_SEED.to_vec() },
+                Seed::AccountKey { index: 6 },
+                Seed::AccountKey { index: 7 },
+                Seed::AccountKey { index: 3 },
+            ],
+            false,
+            false,
+        )?,
+        ExtraAccountMeta::new_with_seeds(
+            &[
+                Seed::Literal { bytes: b"whitelist".to_vec() },
+                Seed::AccountKey { index: 1 },
+                Seed::AccountKey { index: 3 },
+            ],
+            false,
+            false,
+        )?,
+    ];
+
+    let mut data = ctx.accounts.extra_account_meta_list.try_borrow_mut_data()?;
+    data.fill(0);
+    ExtraAccountMetaList::init::<ExecuteInstruction>(&mut data, &account_metas)?;
+
     Ok(())
 }
