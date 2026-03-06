@@ -13,6 +13,9 @@ use crate::{
 // These accounts are provided via CPI to this program from the token2022 program
 #[derive(Accounts)]
 pub struct TransferHook<'info> {
+    // Intentionally requires owner == source_token.owner, which blocks delegated
+    // transfers. Attestations are identity-bound, so only the attested wallet
+    // owner should be able to initiate transfers.
     #[account(
         token::mint = mint,
         token::authority = owner,
