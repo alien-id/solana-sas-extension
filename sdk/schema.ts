@@ -9,11 +9,11 @@ export const SCHEMA_NAME = "AlienIdSolanaLinkage";
 //   0=U8, 3=U64, 12=String, 13=VecU8
 export const SCHEMA_LAYOUT = Buffer.from([
   13, // VecU8   — alienAccountAddress (32 bytes)
-  0,  // U8      — alienIDVersion (0=V0_9, 1=V1, 2=V2)
+  0, // U8      — alienIDVersion (0=V0_9, 1=V1, 2=V2)
   12, // String  — alienChainId
   12, // String  — solanaAddress (hex string)
   13, // VecU8   — linkageProof (signature from Alien key over solana address)
-  3,  // U64     — timestamp
+  3, // U64     — timestamp
 ]);
 
 export const SCHEMA_FIELD_NAMES = [
@@ -27,11 +27,11 @@ export const SCHEMA_FIELD_NAMES = [
 
 export interface AlienIdAttestationData {
   alienAccountAddress: Uint8Array; // 32 bytes — alien account pubkey/address bytes
-  alienIDVersion: number;          // 0=V0_9, 1=V1, 2=V2
-  alienChainId: string;            // e.g. "ethereum:1"
-  solanaAddress: string;           // solana pubkey as hex string
-  linkageProof: Uint8Array;        // signature bytes (e.g. 64 bytes)
-  timestamp: bigint;               // unix timestamp seconds
+  alienIDVersion: number; // 0=V0_9, 1=V1, 2=V2
+  alienChainId: string; // e.g. "ethereum:1"
+  solanaAddress: string; // solana pubkey as hex string
+  linkageProof: Uint8Array; // signature bytes (e.g. 64 bytes)
+  timestamp: bigint; // unix timestamp seconds
 }
 
 /**

@@ -1,4 +1,13 @@
+use std::cell::RefMut;
+
 use anchor_lang::prelude::*;
+use anchor_spl::token_2022::spl_token_2022::{
+    extension::{
+        transfer_hook::TransferHookAccount, BaseStateWithExtensionsMut,
+        PodStateWithExtensionsMut,
+    },
+    pod::PodAccount,
+};
 use anchor_spl::token_interface::{Mint, TokenAccount};
 
 use crate::{
@@ -54,7 +63,20 @@ pub struct TransferHook<'info> {
     pub whitelist_entry: UncheckedAccount<'info>,
 }
 
+fn assert_is_transferring(ctx: &Context<TransferHook>) -> Result<()> {
+    let source_token_info = ctx.accounts.source_token.to_account_info();
+    let mut account_data_ref: RefMut<&mut [u8]> = source_token_info.try_borrow_mut_data()?;
+    let mut account = PodStateWithExtensionsMut::<PodAccount>::unpack(*account_data_ref)?;
+    let account_extension = account.get_extension_mut::<TransferHookAccount>()?;
+    if !bool::from(account_extension.transferring) {
+        return err!(TransferHookError::IsNotCurrentlyTransferring);
+    }
+    Ok(())
+}
+
 pub(crate) fn handler(ctx: Context<TransferHook>, _amount: u64) -> Result<()> {
+    assert_is_transferring(&ctx)?;
+
     if ctx.accounts.whitelist_entry.owner == ctx.program_id {
         let (expected_pda, _) = Pubkey::find_program_address(
             &[

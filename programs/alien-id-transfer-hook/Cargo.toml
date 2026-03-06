@@ -21,10 +21,11 @@ custom-panic = []
 
 
 [dependencies]
-anchor-lang = "0.32.1"
+anchor-lang = { version = "0.32.1", features = ["interface-instructions"] }
 anchor-spl = "0.32.1"
 spl-tlv-account-resolution = "0.9.0"
 spl-transfer-hook-interface = "0.9.0"
+spl-discriminator = "0.4.1"
 
 
 [lints.rust]

@@ -18,4 +18,6 @@ pub enum TransferHookError {
     InvalidWhitelistEntry,
     #[msg("Only the config authority can perform this action")]
     Unauthorized,
+    #[msg("Source token account is not currently transferring")]
+    IsNotCurrentlyTransferring,
 }

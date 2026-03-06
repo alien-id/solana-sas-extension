@@ -2,95 +2,172 @@ import {
   PublicKey,
   SystemProgram,
   TransactionInstruction,
+  Connection,
 } from "@solana/web3.js";
+import {
+  TOKEN_2022_PROGRAM_ID,
+  ExtensionType,
+  getMintLen,
+  createInitializeMintInstruction,
+  createInitializeTransferHookInstruction,
+} from "@solana/spl-token";
+import { Program } from "@coral-xyz/anchor";
 import { SAS_PROGRAM_ID } from "./constants";
 import { encodeSizedString, encodeSizedBytes, u32LE, i64LE } from "./encoding";
+import { findHookConfigPda, findExtraAccountMetaListPda } from "./pda";
 
-/** CreateCredential – discriminator 0 */
-export function buildCreateCredentialIx(
+export async function buildCreateMintWithTransferHookIxs(
+  connection: Connection,
   payer: PublicKey,
-  authority: PublicKey,
-  credential: PublicKey,
-  name: string,
-  signers: PublicKey[]
-): TransactionInstruction {
-  const data = Buffer.concat([
-    Buffer.from([0]),
-    encodeSizedString(name),
-    u32LE(signers.length),
-    ...signers.map((s) => s.toBuffer()),
-  ]);
-  return new TransactionInstruction({
-    programId: SAS_PROGRAM_ID,
-    keys: [
-      { pubkey: payer, isSigner: true, isWritable: true },
-      { pubkey: credential, isSigner: false, isWritable: true },
-      { pubkey: authority, isSigner: true, isWritable: false },
-      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-    ],
-    data,
-  });
+  mint: PublicKey,
+  mintAuthority: PublicKey,
+  freezeAuthority: PublicKey | null,
+  decimals: number,
+  hookProgramId: PublicKey
+): Promise<TransactionInstruction[]> {
+  const extensions = [ExtensionType.TransferHook];
+  const mintLen = getMintLen(extensions);
+  const lamports = await connection.getMinimumBalanceForRentExemption(mintLen);
+  return [
+    SystemProgram.createAccount({
+      fromPubkey: payer,
+      newAccountPubkey: mint,
+      space: mintLen,
+      lamports,
+      programId: TOKEN_2022_PROGRAM_ID,
+    }),
+    createInitializeTransferHookInstruction(
+      mint,
+      mintAuthority,
+      hookProgramId,
+      TOKEN_2022_PROGRAM_ID
+    ),
+    createInitializeMintInstruction(
+      mint,
+      decimals,
+      mintAuthority,
+      freezeAuthority,
+      TOKEN_2022_PROGRAM_ID
+    ),
+  ];
 }
 
-/** CreateSchema – discriminator 1 */
-export function buildCreateSchemaIx(
-  payer: PublicKey,
+export async function buildInitializeConfigIx(
+  program: Program,
   authority: PublicKey,
+  mint: PublicKey,
   credential: PublicKey,
   schema: PublicKey,
-  name: string,
-  description: string,
-  layout: Buffer,
-  fieldNames: string[]
-): TransactionInstruction {
-  const data = Buffer.concat([
-    Buffer.from([1]),
-    encodeSizedString(name),
-    encodeSizedString(description),
-    encodeSizedBytes(layout),
-    u32LE(fieldNames.length),
-    ...fieldNames.map((fn) => encodeSizedString(fn)),
-  ]);
-  return new TransactionInstruction({
-    programId: SAS_PROGRAM_ID,
-    keys: [
-      { pubkey: payer, isSigner: true, isWritable: true },
-      { pubkey: authority, isSigner: true, isWritable: false },
-      { pubkey: credential, isSigner: false, isWritable: false },
-      { pubkey: schema, isSigner: false, isWritable: true },
-      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-    ],
-    data,
-  });
+  sasProgram: PublicKey
+): Promise<TransactionInstruction> {
+  const [hookConfigPda] = findHookConfigPda(mint, program.programId);
+  return (program.methods as any)
+    .initializeConfig(credential, schema, sasProgram)
+    .accounts({
+      authority,
+      config: hookConfigPda,
+      mint,
+      systemProgram: SystemProgram.programId,
+    })
+    .instruction();
 }
 
-/** CreateAttestation – discriminator 6 */
-export function buildCreateAttestationIx(
+export async function buildInitializeExtraAccountMetaListIx(
+  program: Program,
   payer: PublicKey,
+  mint: PublicKey
+): Promise<TransactionInstruction> {
+  const [hookConfigPda] = findHookConfigPda(mint, program.programId);
+  const [extraAccountMetaListPda] = findExtraAccountMetaListPda(
+    mint,
+    program.programId
+  );
+  return (program.methods as any)
+    .initializeExtraAccountMetaList()
+    .accounts({
+      payer,
+      extraAccountMetaList: extraAccountMetaListPda,
+      mint,
+      config: hookConfigPda,
+      systemProgram: SystemProgram.programId,
+    })
+    .instruction();
+}
+
+export async function buildAddToWhitelistIx(
+  program: Program,
   authority: PublicKey,
+  mint: PublicKey,
+  wallet: PublicKey
+): Promise<TransactionInstruction> {
+  const [hookConfigPda] = findHookConfigPda(mint, program.programId);
+  return (program.methods as any)
+    .addToWhitelist(wallet)
+    .accounts({
+      authority,
+      config: hookConfigPda,
+      mint,
+      systemProgram: SystemProgram.programId,
+    })
+    .instruction();
+}
+
+export async function buildRemoveFromWhitelistIx(
+  program: Program,
+  authority: PublicKey,
+  mint: PublicKey,
+  wallet: PublicKey
+): Promise<TransactionInstruction> {
+  const [hookConfigPda] = findHookConfigPda(mint, program.programId);
+  return (program.methods as any)
+    .removeFromWhitelist(wallet)
+    .accounts({
+      authority,
+      config: hookConfigPda,
+      mint,
+      systemProgram: SystemProgram.programId,
+    })
+    .instruction();
+}
+
+export async function buildTransferHookAuthorityIx(
+  program: Program,
+  authority: PublicKey,
+  newAuthority: PublicKey,
+  mint: PublicKey
+): Promise<TransactionInstruction> {
+  const [hookConfigPda] = findHookConfigPda(mint, program.programId);
+  return (program.methods as any)
+    .transferAuthority()
+    .accounts({
+      authority,
+      newAuthority,
+      config: hookConfigPda,
+      mint,
+    })
+    .instruction();
+}
+
+export async function buildUpdateConfigIx(
+  program: Program,
+  authority: PublicKey,
+  mint: PublicKey,
   credential: PublicKey,
   schema: PublicKey,
-  attestation: PublicKey,
-  nonce: PublicKey,
-  attData: Buffer,
-  expiry: bigint
-): TransactionInstruction {
-  const data = Buffer.concat([
-    Buffer.from([6]),
-    nonce.toBuffer(),
-    encodeSizedBytes(attData),
-    i64LE(expiry),
-  ]);
-  return new TransactionInstruction({
-    programId: SAS_PROGRAM_ID,
-    keys: [
-      { pubkey: payer, isSigner: true, isWritable: true },
-      { pubkey: authority, isSigner: true, isWritable: false },
-      { pubkey: credential, isSigner: false, isWritable: false },
-      { pubkey: schema, isSigner: false, isWritable: false },
-      { pubkey: attestation, isSigner: false, isWritable: true },
-      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-    ],
-    data,
-  });
+  sasProgram: PublicKey
+): Promise<TransactionInstruction> {
+  const [hookConfigPda] = findHookConfigPda(mint, program.programId);
+  const [extraAccountMetaListPda] = findExtraAccountMetaListPda(
+    mint,
+    program.programId
+  );
+  return (program.methods as any)
+    .updateConfig(credential, schema, sasProgram)
+    .accounts({
+      authority,
+      config: hookConfigPda,
+      mint,
+      extraAccountMetaList: extraAccountMetaListPda,
+    })
+    .instruction();
 }

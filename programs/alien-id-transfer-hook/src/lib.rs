@@ -1,5 +1,10 @@
 use anchor_lang::prelude::*;
-use spl_transfer_hook_interface::instruction::TransferHookInstruction;
+use spl_transfer_hook_interface::{
+    instruction::{
+        ExecuteInstruction, InitializeExtraAccountMetaListInstruction, TransferHookInstruction,
+    },
+};
+use spl_discriminator::SplDiscriminate;
 
 pub mod constants;
 pub mod error;
@@ -8,7 +13,7 @@ pub mod state;
 
 use instructions::*;
 
-declare_id!("HaixGEih7RhVyH3RTy57hwoRk7WURghhBAJ7eHRoHcbx");
+declare_id!("5fXAyPCSDPP1sz54ThCYfCVNgitDucVB7tJTove9cPom");
 
 #[program]
 pub mod alien_id_transfer_hook {
@@ -45,12 +50,15 @@ pub mod alien_id_transfer_hook {
         transfer_authority::handler(ctx)
     }
 
+    #[instruction(discriminator = InitializeExtraAccountMetaListInstruction::SPL_DISCRIMINATOR_SLICE)]
     pub fn initialize_extra_account_meta_list(
         ctx: Context<InitializeExtraAccountMetaList>,
     ) -> Result<()> {
         initialize_extra_account_meta_list::handler(ctx)
     }
 
+
+    #[instruction(discriminator = ExecuteInstruction::SPL_DISCRIMINATOR_SLICE)]
     pub fn transfer_hook(ctx: Context<TransferHook>, amount: u64) -> Result<()> {
         transfer_hook::handler(ctx, amount)
     }
