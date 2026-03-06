@@ -10,7 +10,7 @@ echo "Syncing keys in root project..."
 (cd "$ROOT" && anchor keys sync)
 
 echo "Syncing keys in external/solana-attestation-signer..."
-(cd "$EXT_SAS" && anchor keys sync)
+(cd "$EXT_SAS" && anchor keys sync && anchor build)
 
 HOOK_KEY=$(solana-keygen pubkey "$ROOT/target/deploy/alien_id_transfer_hook-keypair.json")
 CRED_KEY=$(solana-keygen pubkey "$EXT_SAS/target/deploy/credential_signer-keypair.json")
@@ -31,11 +31,13 @@ update_genesis() {
     local so_path="$1"
     local new_addr="$2"
     awk -v so="$so_path" -v addr="$new_addr" '
-        $0 ~ "program = \"" so "\"" { found=1 }
-        found && /^address = / {
-            sub(/address = ".*"/, "address = \"" addr "\"")
-            found=0
+        /^address = / { addr_line = NR; saved = $0; next }
+        $0 ~ "program = \"" so "\"" {
+            print "address = \"" addr "\""
+            print
+            next
         }
+        addr_line == NR - 1 { print saved }
         { print }
     ' "$TOML" > "$TOML.tmp" && mv "$TOML.tmp" "$TOML"
 }
