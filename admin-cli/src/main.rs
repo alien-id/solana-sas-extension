@@ -1,6 +1,7 @@
 use admin_cli::handlers::{
     handle_add_to_whitelist, handle_info, handle_init_extra_account_meta_list,
-    handle_initialize_config, handle_remove_from_whitelist, handle_update_config,
+    handle_initialize_config, handle_remove_from_whitelist, handle_transfer_authority,
+    handle_update_config,
 };
 use anchor_client::solana_sdk::pubkey::Pubkey;
 use anchor_client::{
@@ -76,6 +77,12 @@ enum Commands {
         mint: String,
         #[arg(long)]
         wallet: String,
+    },
+    TransferAuthority {
+        #[arg(long)]
+        mint: String,
+        #[arg(long)]
+        new_authority: String,
     },
 }
 
@@ -174,6 +181,11 @@ fn main() -> Result<()> {
             let mint = parse_pubkey(&mint, "mint")?;
             let wallet = parse_pubkey(&wallet, "wallet")?;
             handle_remove_from_whitelist(&program, mint, wallet)?;
+        }
+        Commands::TransferAuthority { mint, new_authority } => {
+            let mint = parse_pubkey(&mint, "mint")?;
+            let new_authority = parse_pubkey(&new_authority, "new-authority")?;
+            handle_transfer_authority(&program, mint, new_authority)?;
         }
     }
 

@@ -183,6 +183,32 @@ pub fn handle_add_to_whitelist(
     Ok(())
 }
 
+pub fn handle_transfer_authority(
+    program: &Program<Arc<Keypair>>,
+    mint: Pubkey,
+    new_authority: Pubkey,
+) -> Result<()> {
+    let program_id = program.id();
+    let (config_address, _) = get_config_address(&mint, &program_id);
+
+    println!("Transferring authority for mint: {}", mint);
+    println!("New authority: {}", new_authority);
+
+    let tx = program
+        .request()
+        .accounts(alien_id_transfer_hook::accounts::TransferAuthority {
+            authority: program.payer(),
+            new_authority,
+            config: config_address,
+            mint,
+        })
+        .args(alien_id_transfer_hook::instruction::TransferAuthority {})
+        .send()?;
+
+    println!("Transaction successful: {}", tx);
+    Ok(())
+}
+
 pub fn handle_remove_from_whitelist(
     program: &Program<Arc<Keypair>>,
     mint: Pubkey,

@@ -42,16 +42,24 @@ import {
 import { address } from "@solana/kit";
 import { createKeyPairSignerFromPrivateKeyBytes } from "@solana/signers";
 import axios from "axios";
+import * as fs from "fs";
+import * as toml from "toml";
 
 // ---------------------------------------------------------------------------
-// solana-attestation-signer constants
+// solana-attestation-signer constants (read from Anchor.toml)
 // ---------------------------------------------------------------------------
+
+const anchorToml = toml.parse(
+  fs.readFileSync(`${__dirname}/../Anchor.toml`, "utf-8")
+);
+const cluster = anchorToml.provider.cluster as string;
+const programs = anchorToml.programs[cluster];
 
 const CREDENTIAL_SIGNER_PROGRAM_ID = new PublicKey(
-  "E5w9QEcDRgt7vra5dXi878Cz8buPjCuefSEbTYrWqjB4"
+  programs.credential_signer as string
 );
 const SESSION_REGISTRY_PROGRAM_ID = new PublicKey(
-  "EDPkFGFFrYeVL5V77mQzE3cHo3nUSzTPMJzUeJmBp1Wc"
+  programs.session_registry as string
 );
 
 const SAS_CREDENTIAL_NAME = "alien_credential";
