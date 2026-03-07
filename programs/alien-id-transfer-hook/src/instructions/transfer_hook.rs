@@ -22,12 +22,8 @@ use crate::{
 // These accounts are provided via CPI to this program from the token2022 program
 #[derive(Accounts)]
 pub struct TransferHook<'info> {
-    // Intentionally requires owner == source_token.owner, which blocks delegated
-    // transfers. Attestations are identity-bound, so only the attested wallet
-    // owner should be able to initiate transfers.
     #[account(
         token::mint = mint,
-        token::authority = owner,
     )]
     pub source_token: InterfaceAccount<'info, TokenAccount>,
     pub mint: InterfaceAccount<'info, Mint>,
@@ -93,6 +89,11 @@ pub(crate) fn handler(ctx: Context<TransferHook>, _amount: u64) -> Result<()> {
         msg!("Whitelisted owner, skipping attestation: {}", ctx.accounts.owner.key());
         return Ok(());
     }
+
+    require!(
+        ctx.accounts.source_token.owner == ctx.accounts.owner.key(),
+        TransferHookError::DelegatedTransferNotAllowed
+    );
 
     let config = &ctx.accounts.config;
 
