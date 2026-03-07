@@ -350,7 +350,10 @@ describe("alien-id-transfer-hook", () => {
       credentialPda = new PublicKey(credentialPdaAddress);
       schemaPda = new PublicKey(schemaPdaAddress);
 
-      const signerResponse = await axios.get(`${ORACLE_API_URL}/system/signer`);
+      const signerResponse = await axios.get(`${ORACLE_API_URL}/system/signer`).catch((e) => {
+        const detail = e.response?.data?.message ?? e.message;
+        throw new Error(`Failed to fetch oracle signer from ${ORACLE_API_URL}/system/signer: ${detail} (status: ${e.response?.status})`);
+      });
       oraclePublicKey = new PublicKey(
         Buffer.from(signerResponse.data.public_key, "hex")
       );

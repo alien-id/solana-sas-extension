@@ -21,7 +21,7 @@ echo "  alien_id_transfer_hook = $HOOK_KEY"
 echo "  credential_signer      = $CRED_KEY"
 echo "  session_registry       = $SESS_KEY"
 
-sed -i "/^\[programs\.localnet\]/,/^\[/ {
+sed -i '' "/^\[programs\.localnet\]/,/^\[/ {
     s|^alien_id_transfer_hook = \".*\"|alien_id_transfer_hook = \"$HOOK_KEY\"|
     s|^credential_signer = \".*\"|credential_signer = \"$CRED_KEY\"|
     s|^session_registry = \".*\"|session_registry = \"$SESS_KEY\"|
