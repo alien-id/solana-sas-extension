@@ -34,6 +34,9 @@ test = "npx ts-mocha -p ./tsconfig.json -t 1000000 \"tests/**/*.ts\""
 startup_wait = 5000
 shutdown_wait = 2000
 upgradeable = false
+isLocalSigner = true
+localSignerPrivateKey = "d05ed43098bc04ee9ad88ef05c94c739346f2c75d20a2b6d031f2c9f4485ed3f"
+localSignerPublicKey = "dab0db5df5166f60592dd3ff672773cd949de1b2ed2a643eebd157fbf35cd176"
 
 [[test.genesis]]
 address = "22zoJMtdu4tQc2PzL74ZUT7FrwgB1Udec8DdW4yw4BdG"

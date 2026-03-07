@@ -113,6 +113,10 @@ describe("alien-id-transfer-hook", () => {
   const connection = provider.connection;
   const admin = (provider.wallet as anchor.Wallet).payer;
   const isDevnet = connection.rpcEndpoint.includes("devnet");
+  const LOCAL_SIGNER_ENABLED = anchorToml.test?.isLocalSigner === true;
+  const LOCAL_SIGNER_PRIVATE_KEY: string | undefined = anchorToml.test?.localSignerPrivateKey;
+  const LOCAL_SIGNER_PUBLIC_KEY: string | undefined = anchorToml.test?.localSignerPublicKey;
+  const isLocalSigner = !isDevnet && LOCAL_SIGNER_ENABLED;
 
   const mintKeypair = Keypair.generate();
   const userKeypair = Keypair.fromSecretKey(CERTIFICANT_SECRET_KEY);
@@ -180,33 +184,38 @@ describe("alien-id-transfer-hook", () => {
       timestampBuffer,
     ]);
 
-    const sessionSignature = await ed25519.signAsync(
-      Buffer.from(solanaAddress),
-      ed25519.etc.hexToBytes(session.privateKey)
-    );
+    let signature: Buffer;
 
-    const response = await axios
-      .get(
-        `${ORACLE_API_URL}/sign?session_address=${
-          session.address
-        }&solana_address=${solanaAddress}&session_signature=${Buffer.from(
-          sessionSignature
-        ).toString("hex")}&timestamp=${timestamp}`
-      )
-      .catch((err) => {
-        const detail = err.response?.data ?? err.message;
-        throw new Error(
-          `Oracle /sign failed (${err.response?.status}): ${JSON.stringify(
-            detail
-          )}`
-        );
-      });
+    if (isLocalSigner) {
+      const privKeyBytes = Buffer.from(LOCAL_SIGNER_PRIVATE_KEY!, "hex");
+      signature = Buffer.from(await ed25519.signAsync(message, privKeyBytes));
+    } else {
+      const sessionSignature = await ed25519.signAsync(
+        Buffer.from(solanaAddress),
+        ed25519.etc.hexToBytes(session.privateKey)
+      );
 
-    return {
-      signature: Buffer.from(response.data.signature, "hex"),
-      message,
-      timestamp,
-    };
+      const response = await axios
+        .get(
+          `${ORACLE_API_URL}/sign?session_address=${
+            session.address
+          }&solana_address=${solanaAddress}&session_signature=${Buffer.from(
+            sessionSignature
+          ).toString("hex")}&timestamp=${timestamp}`
+        )
+        .catch((err) => {
+          const detail = err.response?.data ?? err.message;
+          throw new Error(
+            `Oracle /sign failed (${err.response?.status}): ${JSON.stringify(
+              detail
+            )}`
+          );
+        });
+
+      signature = Buffer.from(response.data.signature, "hex");
+    }
+
+    return { signature, message, timestamp };
   }
 
   async function createAttestationViaCredentialSigner(
@@ -350,13 +359,17 @@ describe("alien-id-transfer-hook", () => {
       credentialPda = new PublicKey(credentialPdaAddress);
       schemaPda = new PublicKey(schemaPdaAddress);
 
-      const signerResponse = await axios.get(`${ORACLE_API_URL}/system/signer`).catch((e) => {
-        const detail = e.response?.data?.message ?? e.message;
-        throw new Error(`Failed to fetch oracle signer from ${ORACLE_API_URL}/system/signer: ${detail} (status: ${e.response?.status})`);
-      });
-      oraclePublicKey = new PublicKey(
-        Buffer.from(signerResponse.data.public_key, "hex")
-      );
+      if (isLocalSigner) {
+        oraclePublicKey = new PublicKey(Buffer.from(LOCAL_SIGNER_PUBLIC_KEY!, "hex"));
+      } else {
+        const signerResponse = await axios.get(`${ORACLE_API_URL}/system/signer`).catch((e) => {
+          const detail = e.response?.data?.message ?? e.message;
+          throw new Error(`Failed to fetch oracle signer from ${ORACLE_API_URL}/system/signer: ${detail} (status: ${e.response?.status})`);
+        });
+        oraclePublicKey = new PublicKey(
+          Buffer.from(signerResponse.data.public_key, "hex")
+        );
+      }
     }
   });
 
@@ -374,10 +387,14 @@ describe("alien-id-transfer-hook", () => {
     "solana-attestation-signer setup",
     () => {
       it("fetches oracle public key", async () => {
-        const response = await axios.get(`${ORACLE_API_URL}/system/signer`);
-        oraclePublicKey = new PublicKey(
-          Buffer.from(response.data.public_key, "hex")
-        );
+        if (isLocalSigner) {
+          oraclePublicKey = new PublicKey(Buffer.from(LOCAL_SIGNER_PUBLIC_KEY!, "hex"));
+        } else {
+          const response = await axios.get(`${ORACLE_API_URL}/system/signer`);
+          oraclePublicKey = new PublicKey(
+            Buffer.from(response.data.public_key, "hex")
+          );
+        }
         assert.isNotNull(oraclePublicKey, "oracle public key should be set");
       });
 
