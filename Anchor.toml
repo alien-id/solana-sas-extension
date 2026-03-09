@@ -1,3 +1,5 @@
+
+
 [toolchain]
 package_manager = "npm"
 
@@ -11,9 +13,10 @@ credential_signer = "9cstDz8WWRAFaq1vVpTjfHz6tjgh6SJaqYFeZWi1pFHG"
 session_registry = "DeHa6pyZ2CFSbQQiNMm7FgoCXqmkX6tXG77C4Qycpta6"
 
 [programs.localnet]
-alien_id_transfer_hook = "5fXAyPCSDPP1sz54ThCYfCVNgitDucVB7tJTove9cPom"
-credential_signer = "GKn6Gu6ZVD4M5s1csUZS2gdUCoWJyy5PcFRtbvNXKV2"
-session_registry = "5pHXF7jCcRDS4672BwpVJyeuYToiGpEnuJBRxLmKemA"
+alien_id_transfer_hook = "HaixGEih7RhVyH3RTy57hwoRk7WURghhBAJ7eHRoHcbx"
+alien_vault = "5dwj38PNMfnpVBqgU8UrxiterAaBdS4zKWQ4GCsT7eZ3"
+credential_signer = "E5w9QEcDRgt7vra5dXi878Cz8buPjCuefSEbTYrWqjB4"
+session_registry = "EDPkFGFFrYeVL5V77mQzE3cHo3nUSzTPMJzUeJmBp1Wc"
 
 [programs.mainnet]
 alien_id_transfer_hook = "5fXAyPCSDPP1sz54ThCYfCVNgitDucVB7tJTove9cPom"
@@ -30,22 +33,24 @@ wallet = "~/.config/solana/id.json"
 [scripts]
 test = "npx ts-mocha -p ./tsconfig.json -t 1000000 \"tests/**/*.ts\""
 
+[settings]
+isLocalSigner = true
+localSignerPrivateKey = "d05ed43098bc04ee9ad88ef05c94c739346f2c75d20a2b6d031f2c9f4485ed3f"
+localSignerPublicKey = "dab0db5df5166f60592dd3ff672773cd949de1b2ed2a643eebd157fbf35cd176"
+
 [test]
 startup_wait = 5000
 shutdown_wait = 2000
 upgradeable = false
-isLocalSigner = true
-localSignerPrivateKey = "d05ed43098bc04ee9ad88ef05c94c739346f2c75d20a2b6d031f2c9f4485ed3f"
-localSignerPublicKey = "dab0db5df5166f60592dd3ff672773cd949de1b2ed2a643eebd157fbf35cd176"
 
 [[test.genesis]]
 address = "22zoJMtdu4tQc2PzL74ZUT7FrwgB1Udec8DdW4yw4BdG"
 program = "external/solana-attestation-signer/external/solana-attestation-service/target/deploy/solana_attestation_service.so"
 
 [[test.genesis]]
-address = "GKn6Gu6ZVD4M5s1csUZS2gdUCoWJyy5PcFRtbvNXKV2"
+address = "E5w9QEcDRgt7vra5dXi878Cz8buPjCuefSEbTYrWqjB4"
 program = "external/solana-attestation-signer/target/deploy/credential_signer.so"
 
 [[test.genesis]]
-address = "5pHXF7jCcRDS4672BwpVJyeuYToiGpEnuJBRxLmKemA"
+address = "EDPkFGFFrYeVL5V77mQzE3cHo3nUSzTPMJzUeJmBp1Wc"
 program = "external/solana-attestation-signer/target/deploy/session_registry.so"

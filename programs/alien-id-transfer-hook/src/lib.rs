@@ -13,7 +13,7 @@ pub mod state;
 
 use instructions::*;
 
-declare_id!("5fXAyPCSDPP1sz54ThCYfCVNgitDucVB7tJTove9cPom");
+declare_id!("HaixGEih7RhVyH3RTy57hwoRk7WURghhBAJ7eHRoHcbx");
 
 #[program]
 pub mod alien_id_transfer_hook {

@@ -6,7 +6,8 @@
     "deploy:1:create-mint": "node -r ts-node/register deploy/1_create_walien_mint.ts",
     "deploy:2:init-hook": "node -r ts-node/register deploy/2_initialize_transfer_hook.ts",
     "deploy:3:transfer-authority": "node -r ts-node/register deploy/3_transfer_authority_walien_mint.ts",
-    "deploy:4:add-metadata": "node -r ts-node/register deploy/4_add_metadata_walien_mint.ts"
+    "deploy:4:add-metadata": "node -r ts-node/register deploy/4_add_metadata_walien_mint.ts",
+    "deploy:5:add-to-whitelist": "node -r ts-node/register deploy/5_add_to_whitelist.ts"
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.32.1",

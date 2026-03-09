@@ -119,7 +119,7 @@ describe("alien-id-transfer-hook", () => {
   const isLocalSigner = !isDevnet && LOCAL_SIGNER_ENABLED;
 
   const mintKeypair = Keypair.generate();
-  const userKeypair = Keypair.fromSecretKey(CERTIFICANT_SECRET_KEY);
+  const userKeypair = admin;
   const recipientKeypair = Keypair.generate();
   const whitelistedKeypair = Keypair.generate();
 
@@ -575,6 +575,8 @@ describe("alien-id-transfer-hook", () => {
 
       await send(new Transaction().add(...ixs), mintKeypair);
 
+      console.log("Mint pubkey:", mintKeypair.publicKey.toBase58());
+
       const mintInfo = await connection.getAccountInfo(mintKeypair.publicKey);
       assert.isNotNull(mintInfo, "mint account should exist");
     });
@@ -679,7 +681,7 @@ describe("alien-id-transfer-hook", () => {
             mintKeypair.publicKey,
             userAta,
             admin.publicKey,
-            1_000_000_000, // 1 token (9 decimals)
+            100_000_000 * 10 ** 9, // 100m tokens (9 decimals)
             [],
             TOKEN_2022_PROGRAM_ID
           )
@@ -689,7 +691,7 @@ describe("alien-id-transfer-hook", () => {
             mintKeypair.publicKey,
             whitelistedAta,
             admin.publicKey,
-            1_000_000_000, // 1 token (9 decimals)
+            100_000_000 * 10 ** 9, // 100m tokens (9 decimals)
             [],
             TOKEN_2022_PROGRAM_ID
           )
@@ -698,7 +700,7 @@ describe("alien-id-transfer-hook", () => {
       await send(createAtasAndMintTx);
 
       const userBalance = await connection.getTokenAccountBalance(userAta);
-      assert.equal(userBalance.value.uiAmount, 1);
+      assert.equal(userBalance.value.uiAmount, 100_000_000);
     });
   });
 
