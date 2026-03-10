@@ -1,5 +1,30 @@
 # solana-sas-extension
 
+## Deploy
+
+1. **Install dependencies:**
+   ```bash
+   npm install
+   ```
+
+2. **Create the Walien mint:**
+   ```bash
+   npm run deploy:1:create-mint
+   ```
+
+3. **Initialize the transfer hook:**
+   ```bash
+   npm run deploy:2:init-hook
+   ```
+
+4. **Mint 100 million tokens to admin wallet:**
+   ```bash
+   spl-token mint 9zEQFhTG4Jx9SGxLzaoiyTqutVhHzdDFqdXGxUrAUESE \
+     100000000 \
+     --url devnet \
+     --mint-authority ~/.config/solana/id.json
+   ```
+
 ## Running Tests
 
 1. **Load submodules:**

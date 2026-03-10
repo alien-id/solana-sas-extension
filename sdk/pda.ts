@@ -1,52 +1,29 @@
 import { PublicKey } from "@solana/web3.js";
 import { SAS_PROGRAM_ID } from "./constants";
 
-// ---------------------------------------------------------------------------
-// SAS PDA derivations
-// ---------------------------------------------------------------------------
+export const ILM_BASE = new PublicKey(
+    "MFGQxwAmB91SwuYX36okv2Qmdc9aMuHTwWGUrp4AtB1"
+);
 
-export function findCredentialPda(
-  authority: PublicKey,
-  name: string
-): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync(
-    [Buffer.from("credential"), authority.toBuffer(), Buffer.from(name)],
-    SAS_PROGRAM_ID
-  );
-}
+// use with `derivePoolTransferAuthorityMeteora` function
+export const METEORA_DLLM_PROGRAM_ID = new PublicKey("LbVRzDTvBDEcrthxfZ4RL6yiq3uZw8bS6MwtdY6UhFQ");
 
-// NOTE: The SAS program hardcodes version=[1] in its PDA seed derivation.
-// The `version` parameter here is kept for API clarity but must always be 1.
-export function findSchemaPda(
-  credential: PublicKey,
-  name: string,
-  _version: number = 1
-): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync(
-    [
-      Buffer.from("schema"),
-      credential.toBuffer(),
-      Buffer.from(name),
-      Buffer.from([1]), // SAS hardcodes version=1 on-chain
-    ],
-    SAS_PROGRAM_ID
-  );
-}
+export function derivePoolTransferAuthorityMeteora(
+    tokenX: PublicKey,
+    tokenY: PublicKey,
+    dlmmProgramId: PublicKey
+): PublicKey {
+    const [minKey, maxKey] =
+        tokenX.toBuffer().compare(tokenY.toBuffer()) === 1
+            ? [tokenY, tokenX]
+            : [tokenX, tokenY];
 
-export function findAttestationPda(
-  credential: PublicKey,
-  schema: PublicKey,
-  nonce: PublicKey
-): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync(
-    [
-      Buffer.from("attestation"),
-      credential.toBuffer(),
-      schema.toBuffer(),
-      nonce.toBuffer(),
-    ],
-    SAS_PROGRAM_ID
-  );
+    const [pda] = PublicKey.findProgramAddressSync(
+        [ILM_BASE.toBuffer(), minKey.toBuffer(), maxKey.toBuffer()],
+        dlmmProgramId
+    );
+
+    return pda;
 }
 
 // ---------------------------------------------------------------------------
