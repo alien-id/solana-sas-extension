@@ -13,7 +13,20 @@ pub mod state;
 
 use instructions::*;
 
-declare_id!("HaixGEih7RhVyH3RTy57hwoRk7WURghhBAJ7eHRoHcbx");
+#[cfg(not(feature = "no-entrypoint"))]
+use solana_security_txt::security_txt;
+
+#[cfg(not(feature = "no-entrypoint"))]
+security_txt! {
+    name: "WALIEN Transfer Hook program",
+    project_url: "https://alien.org/",
+    contacts: "email:aliensol@eti.gg, twitter:@alienorg",
+    policy: "https://alien.org/sol-security-policy",
+    preferred_languages: "en",
+    source_code: "https://github.com/alien-id/solana-sas-extension"
+}
+
+declare_id!("BBuax7pfatrjWLx2KLNrKopdQz9eLmtDcC93wughEP7F");
 
 #[program]
 pub mod alien_id_transfer_hook {
