@@ -1,5 +1,63 @@
 # solana-sas-extension
 
+## Overview
+
+This project implements a **Solana Token-2022 Transfer Hook** that enforces cross-chain identity verification for token transfers. Before any token transfer is executed, the hook verifies that the sender's wallet holds a valid **attestation** — a cryptographic credential proving the wallet owner has an associated account on an Alien chain.
+
+### Transfer Hook Logic
+
+The transfer hook intercepts every token transfer and performs the following checks:
+
+1. **Attestation existence** — confirms that a valid attestation account exists for the sender's Solana wallet, issued by the [Solana Attestation Service (SAS)](https://github.com/solana-attestation-service/solana-attestation-service).
+2. **Issuer verification** — validates that the attestation was signed by our **external credential signer** (via [solana-attestation-signer](https://github.com/alien-id/solana-attestation-signer)), ensuring only credentials issued by the authorised party are accepted.
+3. **Cross-chain account proof** — the attestation itself encodes proof that the wallet owner controls an account on the alien chain, binding the Solana identity to the external identity.
+
+If any of these checks fail, the transfer is rejected by the on-chain program.
+
+The hook also validates that the attestation account layout matches the expected SAS format (correct discriminator, valid `credential` and `schema` fields) and that the attestation has not expired (`expiry == 0` is treated as never-expiring).
+
+> **Note:** Delegated transfers are not supported — only the direct token account owner may transfer, preventing circumvention of the attestation check via delegate accounts.
+
+### Whitelisting
+
+Certain wallets can be **exempted from attestation checks** via a per-mint whitelist managed by the hook authority. A whitelisted wallet bypasses all attestation verification on every transfer.
+
+- **Whitelist entries** are PDAs with seeds `["whitelist", mint, wallet]` owned by this program.
+- The hook detects a whitelisted sender by checking whether the `whitelist_entry` account is owned by the hook program and its address matches the expected PDA derivation.
+- Only the **hook authority** (stored in `HookConfig`) can add or remove whitelist entries.
+
+This mechanism is intended for administrative wallets (e.g., liquidity pools) that should not be subject to cross-chain identity verification.
+
+### On-Chain State
+
+| Account | Seeds | Description |
+|---|---|---|
+| `HookConfig` | `["config", mint]` | Per-mint config storing `authority`, `credential`, `schema`, `sas_program` |
+| `ExtraAccountMetaList` | `["extra-account-metas", mint]` | Declares the additional accounts injected into every transfer CPI |
+| `WhitelistEntry` | `["whitelist", mint, wallet]` | Marks a wallet as whitelisted; closing this account removes the wallet from the whitelist |
+
+### Key Programs Involved
+
+| Program | Role |
+|---|---|
+| **Transfer Hook** (this repo) | Enforces attestation checks on every token transfer |
+| **Solana Attestation Service** | Issues and stores on-chain attestation accounts |
+| **Credential Signer** | External signer that co-signs attestations, proving alien-chain account ownership |
+| **Session Registry** | Tracks active credential sessions used during verification |
+
+### Program Instructions
+
+| Instruction | Authority | Description |
+|---|---|---|
+| `initialize_config` | Mint authority | Creates the `HookConfig` PDA for a mint, setting the initial `credential`, `schema`, and `sas_program`. Can only be called by the current mint authority. |
+| `initialize_extra_account_meta_list` | Hook authority | Allocates and populates the `ExtraAccountMetaList` PDA that tells Token-2022 which extra accounts to inject into every transfer CPI. |
+| `update_config` | Hook authority | Updates `credential`, `schema`, and `sas_program` in the config **and** atomically re-initialises the `ExtraAccountMetaList` to reflect the new values. |
+| `transfer_authority` | Hook authority | Transfers the hook authority role to a new pubkey by updating `HookConfig.authority`. |
+| `add_to_whitelist` | Hook authority | Creates a `WhitelistEntry` PDA for the given wallet, exempting it from attestation checks on all future transfers. |
+| `remove_from_whitelist` | Hook authority | Closes the `WhitelistEntry` PDA for the given wallet, revoking its exemption and reclaiming rent to the authority. |
+| `initialize_extra_account_meta_list` *(SPL discriminator)* | Token-2022 | Standard SPL Transfer Hook interface entrypoint used during mint setup. |
+| `transfer_hook` *(Execute discriminator)* | Token-2022 (CPI) | Called automatically by Token-2022 on every transfer. Performs whitelist check, then attestation verification if the sender is not whitelisted. |
+
 ## Deploy
 
 1. **Install dependencies:**
