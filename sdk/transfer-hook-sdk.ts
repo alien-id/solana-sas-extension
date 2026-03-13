@@ -21,7 +21,7 @@ export async function fetchCredentialSignerPdas(
     [Buffer.from("program_state")],
     credentialSignerProgramId
   );
-  const idl = require("../external/solana-attestation-signer/target/idl/credential_signer.json");
+  const idl = require("../idl/credential_signer.json");
   const program = new Program(idl, provider);
   const programState = await (program.account as any).programState.fetch(
     programStatePda

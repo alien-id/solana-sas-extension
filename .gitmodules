@@ -1,3 +1,0 @@
-[submodule "external/solana-attestation-signer"]
-	path = external/solana-attestation-signer
-	url = https://github.com/alien-id/solana-attestation-signer.git

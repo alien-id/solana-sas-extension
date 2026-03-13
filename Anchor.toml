@@ -12,8 +12,8 @@ session_registry = "DeHa6pyZ2CFSbQQiNMm7FgoCXqmkX6tXG77C4Qycpta6"
 
 [programs.localnet]
 alien_id_transfer_hook = "BBuax7pfatrjWLx2KLNrKopdQz9eLmtDcC93wughEP7F"
-credential_signer = "E5w9QEcDRgt7vra5dXi878Cz8buPjCuefSEbTYrWqjB4"
-session_registry = "EDPkFGFFrYeVL5V77mQzE3cHo3nUSzTPMJzUeJmBp1Wc"
+credential_signer = "GKn6Gu6ZVD4M5s1csUZS2gdUCoWJyy5PcFRtbvNXKV2"
+session_registry = "5pHXF7jCcRDS4672BwpVJyeuYToiGpEnuJBRxLmKemA"
 
 [programs.mainnet]
 alien_id_transfer_hook = "5fXAyPCSDPP1sz54ThCYfCVNgitDucVB7tJTove9cPom"
@@ -42,12 +42,12 @@ upgradeable = false
 
 [[test.genesis]]
 address = "22zoJMtdu4tQc2PzL74ZUT7FrwgB1Udec8DdW4yw4BdG"
-program = "external/solana-attestation-signer/external/solana-attestation-service/target/deploy/solana_attestation_service.so"
+program = "binaries/solana_attestation_service.so"
 
 [[test.genesis]]
-address = "E5w9QEcDRgt7vra5dXi878Cz8buPjCuefSEbTYrWqjB4"
-program = "external/solana-attestation-signer/target/deploy/credential_signer.so"
+address = "GKn6Gu6ZVD4M5s1csUZS2gdUCoWJyy5PcFRtbvNXKV2"
+program = "binaries/credential_signer.so"
 
 [[test.genesis]]
-address = "EDPkFGFFrYeVL5V77mQzE3cHo3nUSzTPMJzUeJmBp1Wc"
-program = "external/solana-attestation-signer/target/deploy/session_registry.so"
+address = "5pHXF7jCcRDS4672BwpVJyeuYToiGpEnuJBRxLmKemA"
+program = "binaries/session_registry.so"
