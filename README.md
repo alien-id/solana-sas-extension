@@ -18,6 +18,14 @@ The hook also validates that the attestation account layout matches the expected
 
 > **Note:** Delegated transfers are not supported — only the direct token account owner may transfer, preventing circumvention of the attestation check via delegate accounts.
 
+### TransferHookAccount Extension
+
+Every Token-2022 token account that belongs to a mint with a transfer hook enabled automatically carries the **`TransferHookAccount`** extension. Token-2022 sets a `transferring` flag on the source token account for the duration of a transfer CPI and clears it immediately after.
+
+The hook program reads this flag as the very first step via `assert_is_transferring`. If the flag is not set it means the hook instruction was invoked **directly** (not as part of a real token transfer), and the transaction is rejected with `IsNotCurrentlyTransferring`.
+
+This guard is essential for security: without it, anyone could call the hook instruction in isolation, potentially manipulating accounts or bypassing checks by crafting a custom invocation outside of an actual transfer flow.
+
 ### Whitelisting
 
 Certain wallets can be **exempted from attestation checks** via a per-mint whitelist managed by the hook authority. A whitelisted wallet bypasses all attestation verification on every transfer.
