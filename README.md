@@ -111,7 +111,7 @@ External program IDLs are vendored in the [`idl/`](./idl/) directory for local s
 |---|---|---|
 | `credential_signer.json` | `GKn6Gu6ZVD4M5s1csUZS2gdUCoWJyy5PcFRtbvNXKV2` | [alien-id/solana-attestation-signer](https://github.com/alien-id/solana-attestation-signer) — `target/idl/credential_signer.json` |
 | `session_registry.json` | `5pHXF7jCcRDS4672BwpVJyeuYToiGpEnuJBRxLmKemA` | [alien-id/solana-attestation-signer](https://github.com/alien-id/solana-attestation-signer) — `target/idl/session_registry.json` |
-| `solana_attestation_service.json` | `22zoJMtdu4tQc2PzL74ZUT7FrwgB1Udec8DdW4yw4BdG` | [solana-attestation-service/solana-attestation-service](https://github.com/solana-attestation-service/solana-attestation-service) — `idl/solana_attestation_service.json` |
+| `solana_attestation_service.json` | `22zoJMtdu4tQc2PzL74ZUT7FrwgB1Udec8DdW4yw4BdG` | [solana-attestation-service/solana-attestation-service](https://github.com/solana-foundation/solana-attestation-service) — `idl/solana_attestation_service.json` |
 
 Compiled binaries (`.so` files) used in local tests are in [`binaries/`](./binaries/).
 
