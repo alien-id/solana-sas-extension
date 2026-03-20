@@ -16,8 +16,6 @@ If any of these checks fail, the transfer is rejected by the on-chain program.
 
 The hook also validates that the attestation account layout matches the expected SAS format (correct discriminator, valid `credential` and `schema` fields) and that the attestation has not expired (`expiry == 0` is treated as never-expiring).
 
-> **Note:** Delegated transfers are not supported — only the direct token account owner may transfer, preventing circumvention of the attestation check via delegate accounts.
-
 ### TransferHookAccount Extension
 
 Every Token-2022 token account that belongs to a mint with a transfer hook enabled automatically carries the **`TransferHookAccount`** extension. Token-2022 sets a `transferring` flag on the source token account for the duration of a transfer CPI and clears it immediately after.

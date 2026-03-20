@@ -14,8 +14,10 @@ pub struct HookConfig {
     pub sas_program: Pubkey,
     /// Bump for this PDA
     pub bump: u8,
+    /// Pending authority awaiting acceptance (Pubkey::default() = none)
+    pub pending_authority: Pubkey,
 }
 
 impl HookConfig {
-    pub const LEN: usize = 8 + 32 + 32 + 32 + 32 + 1;
+    pub const LEN: usize = 8 + 32 + 32 + 32 + 32 + 1 + 32;
 }

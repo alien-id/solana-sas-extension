@@ -1,3 +1,4 @@
+pub mod accept_authority;
 pub mod add_to_whitelist;
 pub mod initialize_config;
 pub mod initialize_extra_account_meta_list;
@@ -6,6 +7,7 @@ pub mod transfer_authority;
 pub mod transfer_hook;
 pub mod update_config;
 
+pub use accept_authority::*;
 pub use add_to_whitelist::*;
 pub use initialize_config::*;
 pub use initialize_extra_account_meta_list::*;
