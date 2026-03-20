@@ -82,7 +82,7 @@ pub(crate) fn handler(ctx: Context<TransferHook>, _amount: u64) -> Result<()> {
 
     require!(
         is_direct_owner || is_approved_delegate,
-        TransferHookError::DelegatedTransferNotAllowed
+        TransferHookError::UnauthorizedTransferAuthority
     );
 
     if ctx.accounts.whitelist_entry.owner == ctx.program_id {
