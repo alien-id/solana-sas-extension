@@ -20,8 +20,8 @@ pub enum TransferHookError {
     Unauthorized,
     #[msg("Source token account is not currently transferring")]
     IsNotCurrentlyTransferring,
-    #[msg("Delegated transfers are not allowed; only the token account owner may transfer")]
-    DelegatedTransferNotAllowed,
+    #[msg("Transfer not allowed: must be the token account owner or an approved delegate")]
+    UnauthorizedTransferAuthority,
     #[msg("No pending authority transfer is in progress")]
     NoPendingAuthority,
 }

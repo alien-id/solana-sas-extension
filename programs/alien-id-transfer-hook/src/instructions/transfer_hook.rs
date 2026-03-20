@@ -11,7 +11,7 @@ use anchor_spl::token_2022::spl_token_2022::{
 use anchor_spl::token_interface::{Mint, TokenAccount};
 
 use crate::{
-    constants::ATTESTATION_DISCRIMINATOR,
+    constants::{ATTESTATION_DISCRIMINATOR, ATTESTATION_SEED},
     error::TransferHookError,
     state::HookConfig,
 };
@@ -73,6 +73,18 @@ fn assert_is_transferring(ctx: &Context<TransferHook>) -> Result<()> {
 pub(crate) fn handler(ctx: Context<TransferHook>, _amount: u64) -> Result<()> {
     assert_is_transferring(&ctx)?;
 
+    let owner_key = ctx.accounts.owner.key();
+    let is_direct_owner = ctx.accounts.source_token.owner == owner_key;
+    let is_approved_delegate = Option::<Pubkey>::from(ctx.accounts.source_token.delegate)
+        .map(|d| d == owner_key)
+        .unwrap_or(false)
+        && ctx.accounts.source_token.delegated_amount > 0;
+
+    require!(
+        is_direct_owner || is_approved_delegate,
+        TransferHookError::UnauthorizedTransferAuthority
+    );
+
     if ctx.accounts.whitelist_entry.owner == ctx.program_id {
         let (expected_pda, _) = Pubkey::find_program_address(
             &[
@@ -90,11 +102,6 @@ pub(crate) fn handler(ctx: Context<TransferHook>, _amount: u64) -> Result<()> {
         return Ok(());
     }
 
-    require!(
-        ctx.accounts.source_token.owner == ctx.accounts.owner.key(),
-        TransferHookError::DelegatedTransferNotAllowed
-    );
-
     let config = &ctx.accounts.config;
 
     require!(
@@ -111,6 +118,20 @@ pub(crate) fn handler(ctx: Context<TransferHook>, _amount: u64) -> Result<()> {
     );
 
     let attestation = &ctx.accounts.attestation;
+
+    let (expected_attestation_pda, _) = Pubkey::find_program_address(
+        &[
+            ATTESTATION_SEED,
+            config.credential.as_ref(),
+            config.schema.as_ref(),
+            ctx.accounts.owner.key().as_ref(),
+        ],
+        &config.sas_program,
+    );
+    require!(
+        attestation.key() == expected_attestation_pda,
+        TransferHookError::InvalidAttestation
+    );
 
     require!(
         attestation.owner == &config.sas_program,
