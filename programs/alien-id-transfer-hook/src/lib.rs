@@ -63,6 +63,10 @@ pub mod alien_id_transfer_hook {
         transfer_authority::handler(ctx)
     }
 
+    pub fn accept_authority(ctx: Context<AcceptAuthority>) -> Result<()> {
+        accept_authority::handler(ctx)
+    }
+
     #[instruction(discriminator = InitializeExtraAccountMetaListInstruction::SPL_DISCRIMINATOR_SLICE)]
     pub fn initialize_extra_account_meta_list(
         ctx: Context<InitializeExtraAccountMetaList>,

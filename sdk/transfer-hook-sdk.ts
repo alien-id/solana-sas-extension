@@ -199,6 +199,22 @@ export class TransferHookSdk {
         newAuthority,
         config: hookConfigPda,
         mint,
+        systemProgram: SystemProgram.programId,
+      })
+      .instruction();
+  }
+
+  async acceptAuthorityIx(
+    pendingAuthority: PublicKey,
+    mint: PublicKey
+  ): Promise<TransactionInstruction> {
+    const [hookConfigPda] = this.hookConfigPda(mint);
+    return (this.program.methods as any)
+      .acceptAuthority()
+      .accounts({
+        pendingAuthority,
+        config: hookConfigPda,
+        mint,
       })
       .instruction();
   }

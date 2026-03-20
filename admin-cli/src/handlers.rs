@@ -28,6 +28,9 @@ pub fn handle_info(program: &Program<Arc<Keypair>>, mint: Pubkey) -> Result<()> 
         }
         Ok(config) => {
             println!("Authority:  {}", config.authority);
+            if config.pending_authority != Pubkey::default() {
+                println!("Pending:    {} (awaiting acceptance)", config.pending_authority);
+            }
             println!("Credential: {}", config.credential);
             println!("Schema:     {}", config.schema);
             println!("SAS Program:{}", config.sas_program);
@@ -194,8 +197,8 @@ pub fn handle_transfer_authority(
     let program_id = program.id();
     let (config_address, _) = get_config_address(&mint, &program_id);
 
-    println!("Transferring authority for mint: {}", mint);
-    println!("New authority: {}", new_authority);
+    println!("Initiating authority transfer for mint: {}", mint);
+    println!("Pending new authority: {}", new_authority);
 
     let tx = program
         .request()
@@ -204,11 +207,41 @@ pub fn handle_transfer_authority(
             new_authority,
             config: config_address,
             mint,
+            system_program: system_program::ID,
         })
         .args(alien_id_transfer_hook::instruction::TransferAuthority {})
         .send()?;
 
     println!("Transaction successful: {}", tx);
+    println!(
+        "The new authority must accept by running:\n  admin-cli accept-authority --mint {}",
+        mint
+    );
+    Ok(())
+}
+
+pub fn handle_accept_authority(
+    program: &Program<Arc<Keypair>>,
+    mint: Pubkey,
+) -> Result<()> {
+    let program_id = program.id();
+    let (config_address, _) = get_config_address(&mint, &program_id);
+
+    println!("Accepting authority transfer for mint: {}", mint);
+    println!("Accepting as: {}", program.payer());
+
+    let tx = program
+        .request()
+        .accounts(alien_id_transfer_hook::accounts::AcceptAuthority {
+            pending_authority: program.payer(),
+            config: config_address,
+            mint,
+        })
+        .args(alien_id_transfer_hook::instruction::AcceptAuthority {})
+        .send()?;
+
+    println!("Transaction successful: {}", tx);
+    println!("Authority transfer complete. New authority: {}", program.payer());
     Ok(())
 }
 

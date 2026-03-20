@@ -5,13 +5,15 @@ import {
   AuthorityType,
   setAuthority,
 } from "@solana/spl-token";
-import { PublicKey } from "@solana/web3.js";
+import { PublicKey, Transaction, sendAndConfirmTransaction } from "@solana/web3.js";
 import { loadKeypairFromEnv } from "./helpers/common";
+import { TransferHookSdk } from "../sdk";
 
 async function main() {
   const provider = AnchorProvider.env();
   const connection = provider.connection;
   const payer = loadKeypairFromEnv();
+  const sdk = new TransferHookSdk(provider);
 
   const walienMintStr = process.env.WALIEN_MINT;
   if (!walienMintStr) throw new Error("Set WALIEN_MINT");
@@ -52,6 +54,25 @@ async function main() {
 
   console.log(
     `Transferred freeze authority of ${walienMint.toBase58()} to ${newMintAuthority.toBase58()}`
+  );
+
+  const ix = await sdk.transferAuthorityIx(
+    payer.publicKey,
+    newMintAuthority,
+    walienMint
+  );
+  await sendAndConfirmTransaction(
+    connection,
+    new Transaction().add(ix),
+    [payer],
+    { commitment: "confirmed" }
+  );
+
+  console.log(
+    `Initiated hook config authority transfer to ${newMintAuthority.toBase58()} (pending acceptance)`
+  );
+  console.log(
+    `The new authority must accept by running:\n  admin-cli accept-authority --mint ${walienMint.toBase58()}`
   );
 }
 

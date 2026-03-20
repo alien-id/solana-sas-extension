@@ -1092,7 +1092,7 @@ describe("alien-id-transfer-hook", () => {
   // ---------------------------------------------------------------------------
 
   describe("Authority transfer", () => {
-    it("admin transfers authority to a new admin, then new admin updates config", async () => {
+    it("admin initiates transfer; authority unchanged until new admin accepts", async () => {
       const newAdmin = Keypair.generate();
       await fundWallet(newAdmin.publicKey, 0.1);
 
@@ -1103,31 +1103,109 @@ describe("alien-id-transfer-hook", () => {
       );
       await send(new Transaction().add(ix1));
 
+      const configPending = await (sdk.program.account as any).hookConfig.fetch(
+        hookConfigPda
+      );
+      assert.equal(
+        configPending.authority.toBase58(),
+        admin.publicKey.toBase58(),
+        "authority should still be admin until accepted"
+      );
+      assert.equal(
+        configPending.pendingAuthority.toBase58(),
+        newAdmin.publicKey.toBase58(),
+        "pending authority should be set to newAdmin"
+      );
+
+      const ix2 = await sdk.acceptAuthorityIx(
+        newAdmin.publicKey,
+        mintKeypair.publicKey
+      );
+      await send(new Transaction().add(ix2), newAdmin);
+
       const configAfter = await (sdk.program.account as any).hookConfig.fetch(
         hookConfigPda
       );
       assert.equal(
         configAfter.authority.toBase58(),
-        newAdmin.publicKey.toBase58()
+        newAdmin.publicKey.toBase58(),
+        "authority should be newAdmin after acceptance"
+      );
+      assert.equal(
+        configAfter.pendingAuthority.toBase58(),
+        PublicKey.default.toBase58(),
+        "pending authority should be cleared after acceptance"
       );
 
-      const ix2 = await sdk.transferAuthorityIx(
+      const ix3 = await sdk.transferAuthorityIx(
         newAdmin.publicKey,
         admin.publicKey,
         mintKeypair.publicKey
       );
-      await send(new Transaction().add(ix2), newAdmin);
+      await send(new Transaction().add(ix3), newAdmin);
+
+      const ix4 = await sdk.acceptAuthorityIx(
+        admin.publicKey,
+        mintKeypair.publicKey
+      );
+      await send(new Transaction().add(ix4));
 
       const configRestored = await (
         sdk.program.account as any
       ).hookConfig.fetch(hookConfigPda);
       assert.equal(
         configRestored.authority.toBase58(),
-        admin.publicKey.toBase58()
+        admin.publicKey.toBase58(),
+        "authority should be restored to admin"
       );
     });
 
-    it("non-admin cannot transfer authority", async () => {
+    it("pending authority cannot be bypassed: random signer cannot accept", async () => {
+      const newAdmin = Keypair.generate();
+      const attacker = Keypair.generate();
+      await fundWallet(newAdmin.publicKey, 0.1);
+      await fundWallet(attacker.publicKey, 0.1);
+
+      const ix1 = await sdk.transferAuthorityIx(
+        admin.publicKey,
+        newAdmin.publicKey,
+        mintKeypair.publicKey
+      );
+      await send(new Transaction().add(ix1));
+
+      let failed = false;
+      try {
+        const ix2 = await sdk.acceptAuthorityIx(
+          attacker.publicKey,
+          mintKeypair.publicKey
+        );
+        await send(new Transaction().add(ix2), attacker);
+      } catch {
+        failed = true;
+      }
+      assert.isTrue(failed, "attacker should not be able to accept authority");
+
+      const ix3 = await sdk.acceptAuthorityIx(
+        newAdmin.publicKey,
+        mintKeypair.publicKey
+      );
+      await send(new Transaction().add(ix3), newAdmin);
+
+      const ix4 = await sdk.transferAuthorityIx(
+        newAdmin.publicKey,
+        admin.publicKey,
+        mintKeypair.publicKey
+      );
+      await send(new Transaction().add(ix4), newAdmin);
+
+      const ix5 = await sdk.acceptAuthorityIx(
+        admin.publicKey,
+        mintKeypair.publicKey
+      );
+      await send(new Transaction().add(ix5));
+    });
+
+    it("non-admin cannot initiate authority transfer", async () => {
       const attacker = Keypair.generate();
       await fundWallet(attacker.publicKey, 0.1);
 
@@ -1144,8 +1222,25 @@ describe("alien-id-transfer-hook", () => {
       }
       assert.isTrue(
         failed,
-        "non-admin should not be able to transfer authority"
+        "non-admin should not be able to initiate authority transfer"
       );
+    });
+
+    it("accept_authority fails when no transfer is pending", async () => {
+      const randomKeypair = Keypair.generate();
+      await fundWallet(randomKeypair.publicKey, 0.1);
+
+      let failed = false;
+      try {
+        const ix = await sdk.acceptAuthorityIx(
+          randomKeypair.publicKey,
+          mintKeypair.publicKey
+        );
+        await send(new Transaction().add(ix), randomKeypair);
+      } catch {
+        failed = true;
+      }
+      assert.isTrue(failed, "accept should fail when no transfer is pending");
     });
   });
 
