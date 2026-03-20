@@ -73,6 +73,18 @@ fn assert_is_transferring(ctx: &Context<TransferHook>) -> Result<()> {
 pub(crate) fn handler(ctx: Context<TransferHook>, _amount: u64) -> Result<()> {
     assert_is_transferring(&ctx)?;
 
+    let owner_key = ctx.accounts.owner.key();
+    let is_direct_owner = ctx.accounts.source_token.owner == owner_key;
+    let is_approved_delegate = Option::<Pubkey>::from(ctx.accounts.source_token.delegate)
+        .map(|d| d == owner_key)
+        .unwrap_or(false)
+        && ctx.accounts.source_token.delegated_amount > 0;
+
+    require!(
+        is_direct_owner || is_approved_delegate,
+        TransferHookError::UnauthorizedTransferAuthority
+    );
+
     if ctx.accounts.whitelist_entry.owner == ctx.program_id {
         let (expected_pda, _) = Pubkey::find_program_address(
             &[
@@ -89,11 +101,6 @@ pub(crate) fn handler(ctx: Context<TransferHook>, _amount: u64) -> Result<()> {
         msg!("Whitelisted owner, skipping attestation: {}", ctx.accounts.owner.key());
         return Ok(());
     }
-
-    require!(
-        ctx.accounts.source_token.owner == ctx.accounts.owner.key(),
-        TransferHookError::DelegatedTransferNotAllowed
-    );
 
     let config = &ctx.accounts.config;
 
