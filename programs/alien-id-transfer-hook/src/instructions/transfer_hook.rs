@@ -31,8 +31,8 @@ pub struct TransferHook<'info> {
         token::mint = mint,
     )]
     pub destination_token: InterfaceAccount<'info, TokenAccount>,
-    /// CHECK: source token account owner, can be SystemAccount or PDA owned by another program
-    pub owner: UncheckedAccount<'info>,
+    /// CHECK: source token account transfer authority, can be SystemAccount or PDA owned by another program
+    pub transfer_authority: UncheckedAccount<'info>,
     /// CHECK: ExtraAccountMetaList Account
     #[account(
         seeds = [b"extra-account-metas", mint.key().as_ref()],
@@ -78,7 +78,7 @@ pub(crate) fn handler(ctx: Context<TransferHook>, _amount: u64) -> Result<()> {
             &[
                 b"whitelist",
                 ctx.accounts.mint.key().as_ref(),
-                ctx.accounts.owner.key().as_ref(),
+                ctx.accounts.transfer_authority.key().as_ref(),
             ],
             ctx.program_id,
         );
@@ -86,12 +86,12 @@ pub(crate) fn handler(ctx: Context<TransferHook>, _amount: u64) -> Result<()> {
             ctx.accounts.whitelist_entry.key() == expected_pda,
             TransferHookError::InvalidWhitelistEntry
         );
-        msg!("Whitelisted owner, skipping attestation: {}", ctx.accounts.owner.key());
+        msg!("Whitelisted owner, skipping attestation: {}", ctx.accounts.transfer_authority.key());
         return Ok(());
     }
 
     require!(
-        ctx.accounts.source_token.owner == ctx.accounts.owner.key(),
+        ctx.accounts.source_token.owner == ctx.accounts.transfer_authority.key(),
         TransferHookError::DelegatedTransferNotAllowed
     );
 
@@ -157,7 +157,7 @@ pub(crate) fn handler(ctx: Context<TransferHook>, _amount: u64) -> Result<()> {
         );
     }
 
-    msg!("Attestation verified for owner: {}", ctx.accounts.owner.key());
+    msg!("Attestation verified for owner: {}", ctx.accounts.transfer_authority.key());
 
     Ok(())
 }
