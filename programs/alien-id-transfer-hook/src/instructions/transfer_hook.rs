@@ -31,8 +31,8 @@ pub struct TransferHook<'info> {
         token::mint = mint,
     )]
     pub destination_token: InterfaceAccount<'info, TokenAccount>,
-    /// CHECK: source token account owner, can be SystemAccount or PDA owned by another program
-    pub owner: UncheckedAccount<'info>,
+    /// CHECK: source token account transfer authority, can be SystemAccount or PDA owned by another program
+    pub transfer_authority: UncheckedAccount<'info>,
     /// CHECK: ExtraAccountMetaList Account
     #[account(
         seeds = [b"extra-account-metas", mint.key().as_ref()],
@@ -73,7 +73,7 @@ fn assert_is_transferring(ctx: &Context<TransferHook>) -> Result<()> {
 pub(crate) fn handler(ctx: Context<TransferHook>, _amount: u64) -> Result<()> {
     assert_is_transferring(&ctx)?;
 
-    let owner_key = ctx.accounts.owner.key();
+    let owner_key = ctx.accounts.transfer_authority.key();
     let is_direct_owner = ctx.accounts.source_token.owner == owner_key;
     let is_approved_delegate = Option::<Pubkey>::from(ctx.accounts.source_token.delegate)
         .map(|d| d == owner_key)
@@ -90,7 +90,7 @@ pub(crate) fn handler(ctx: Context<TransferHook>, _amount: u64) -> Result<()> {
             &[
                 b"whitelist",
                 ctx.accounts.mint.key().as_ref(),
-                ctx.accounts.owner.key().as_ref(),
+                ctx.accounts.transfer_authority.key().as_ref(),
             ],
             ctx.program_id,
         );
@@ -98,7 +98,7 @@ pub(crate) fn handler(ctx: Context<TransferHook>, _amount: u64) -> Result<()> {
             ctx.accounts.whitelist_entry.key() == expected_pda,
             TransferHookError::InvalidWhitelistEntry
         );
-        msg!("Whitelisted owner, skipping attestation: {}", ctx.accounts.owner.key());
+        msg!("Whitelisted owner, skipping attestation: {}", ctx.accounts.transfer_authority.key());
         return Ok(());
     }
 
@@ -124,7 +124,7 @@ pub(crate) fn handler(ctx: Context<TransferHook>, _amount: u64) -> Result<()> {
             ATTESTATION_SEED,
             config.credential.as_ref(),
             config.schema.as_ref(),
-            ctx.accounts.owner.key().as_ref(),
+            ctx.accounts.transfer_authority.key().as_ref(),
         ],
         &config.sas_program,
     );
@@ -178,7 +178,7 @@ pub(crate) fn handler(ctx: Context<TransferHook>, _amount: u64) -> Result<()> {
         );
     }
 
-    msg!("Attestation verified for owner: {}", ctx.accounts.owner.key());
+    msg!("Attestation verified for owner: {}", ctx.accounts.transfer_authority.key());
 
     Ok(())
 }
