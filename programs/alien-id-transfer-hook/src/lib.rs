@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 use spl_transfer_hook_interface::{
     instruction::{
-        ExecuteInstruction, InitializeExtraAccountMetaListInstruction, TransferHookInstruction,
+        ExecuteInstruction, InitializeExtraAccountMetaListInstruction,
     },
 };
 use spl_discriminator::SplDiscriminate;
@@ -61,6 +61,10 @@ pub mod alien_id_transfer_hook {
 
     pub fn transfer_authority(ctx: Context<TransferAuthority>) -> Result<()> {
         transfer_authority::handler(ctx)
+    }
+
+    pub fn accept_authority(ctx: Context<AcceptAuthority>) -> Result<()> {
+        accept_authority::handler(ctx)
     }
 
     #[instruction(discriminator = InitializeExtraAccountMetaListInstruction::SPL_DISCRIMINATOR_SLICE)]
