@@ -11,7 +11,7 @@ use anchor_spl::token_2022::spl_token_2022::{
 use anchor_spl::token_interface::{Mint, TokenAccount};
 
 use crate::{
-    constants::ATTESTATION_DISCRIMINATOR,
+    constants::{ATTESTATION_DISCRIMINATOR, ATTESTATION_SEED},
     error::TransferHookError,
     state::HookConfig,
 };
@@ -111,6 +111,20 @@ pub(crate) fn handler(ctx: Context<TransferHook>, _amount: u64) -> Result<()> {
     );
 
     let attestation = &ctx.accounts.attestation;
+
+    let (expected_attestation_pda, _) = Pubkey::find_program_address(
+        &[
+            ATTESTATION_SEED,
+            config.credential.as_ref(),
+            config.schema.as_ref(),
+            ctx.accounts.owner.key().as_ref(),
+        ],
+        &config.sas_program,
+    );
+    require!(
+        attestation.key() == expected_attestation_pda,
+        TransferHookError::InvalidAttestation
+    );
 
     require!(
         attestation.owner == &config.sas_program,
