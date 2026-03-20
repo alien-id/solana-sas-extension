@@ -15,6 +15,8 @@ import {
   getAssociatedTokenAddressSync,
   createMintToInstruction,
   createTransferCheckedWithTransferHookInstruction,
+  createApproveCheckedInstruction,
+  createRevokeInstruction,
   ASSOCIATED_TOKEN_PROGRAM_ID,
 } from "@solana/spl-token";
 import { assert } from "chai";
@@ -80,9 +82,14 @@ const TEST_SESSION_2 = {
 const TEST_SESSION_3 = {
   address: "00000001010000000000056c3f4f5078",
   publicKey: "adec95b00444c04bdab0ea3385d06d533e2aadc70f9fc8a877158ae51cc4195e",
-  privateKey:
-    "3143d13c996bd71e88927934f3105329ea22ff2635fcdf71654f0c94a631ec62",
+  privateKey: "3143d13c996bd71e88927934f3105329ea22ff2635fcdf71654f0c94a631ec62",
 };
+
+const TEST_SESSION_4 = {
+  address: "00000001010000000000060d81cb6c06",
+  publicKey: "9f494a70c88d445ecf95b87d81298c4310ad03ae9cc6f105b2b70dabb6d0b39b",
+  privateKey: "6aff1e98e59ef37b3d9ebeb8fe9669b72cbb9f9936ccfdaafb28138d288f41f6",
+}
 
 const CERTIFICANT_SECRET_KEY = new Uint8Array([
   174, 47, 154, 16, 202, 193, 206, 113, 199, 190, 53, 133, 169, 175, 31, 56,
@@ -103,6 +110,11 @@ const CERTIFICANT_SECRET_KEY_3 = new Uint8Array([
   57, 31, 118, 191, 253, 175, 226, 48, 72, 12, 52, 212, 130, 137, 218, 11, 211,
   239, 10, 176, 151, 0, 182, 97, 140, 225, 190, 45, 117, 69, 206, 108, 179, 46,
   124, 132, 253, 34, 76, 214, 220, 5, 121, 34, 27, 72, 8, 227,
+]);
+
+const DELEGATE_SEED = new Uint8Array([
+  42, 71, 13, 200, 155, 88, 233, 17, 64, 190, 25, 107, 211, 48, 96, 139,
+  5, 173, 222, 61, 99, 14, 245, 130, 77, 188, 34, 251, 116, 203, 59, 8,
 ]);
 
 describe("alien-id-transfer-hook", () => {
@@ -1212,9 +1224,209 @@ describe("alien-id-transfer-hook", () => {
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // Security: Transfer with wrong credential/schema/sas_program (error path)
-  // ---------------------------------------------------------------------------
+  describe("Delegated transfer (Approve delegate)", () => {
+    const delegateKeypair = Keypair.fromSeed(DELEGATE_SEED);
+    const DELEGATE_APPROVE_AMOUNT = BigInt(10_000_000);
+
+    before("fund delegate", async () => {
+      await fundWallet(delegateKeypair.publicKey, 0.5);
+    });
+
+    it("rejects unapproved account trying to transfer as delegate", async () => {
+      const transferIx = await createTransferCheckedWithTransferHookInstruction(
+        connection,
+        userAta,
+        mintKeypair.publicKey,
+        recipientAta,
+        delegateKeypair.publicKey,
+        BigInt(1_000_000),
+        MINT_DECIMALS,
+        [],
+        "confirmed",
+        TOKEN_2022_PROGRAM_ID
+      );
+
+      const tx = new Transaction().add(transferIx);
+      tx.feePayer = admin.publicKey;
+      const { blockhash } = await connection.getLatestBlockhash();
+      tx.recentBlockhash = blockhash;
+
+      let failed = false;
+      try {
+        await sendAndConfirmTransaction(connection, tx, [admin, delegateKeypair], {
+          commitment: "confirmed",
+        });
+      } catch {
+        failed = true;
+      }
+      assert.isTrue(failed, "unapproved delegate should be rejected");
+    });
+
+    it("rejects approved delegate without attestation or whitelist", async () => {
+      const approveTx = new Transaction().add(
+        createApproveCheckedInstruction(
+          userAta,
+          mintKeypair.publicKey,
+          delegateKeypair.publicKey,
+          userKeypair.publicKey,
+          DELEGATE_APPROVE_AMOUNT,
+          MINT_DECIMALS,
+          [],
+          TOKEN_2022_PROGRAM_ID
+        )
+      );
+      await send(approveTx);
+
+      const transferIx = await createTransferCheckedWithTransferHookInstruction(
+        connection,
+        userAta,
+        mintKeypair.publicKey,
+        recipientAta,
+        delegateKeypair.publicKey,
+        BigInt(1_000_000),
+        MINT_DECIMALS,
+        [],
+        "confirmed",
+        TOKEN_2022_PROGRAM_ID
+      );
+
+      const tx = new Transaction().add(transferIx);
+      tx.feePayer = admin.publicKey;
+      const { blockhash } = await connection.getLatestBlockhash();
+      tx.recentBlockhash = blockhash;
+
+      let failed = false;
+      try {
+        await sendAndConfirmTransaction(connection, tx, [admin, delegateKeypair], {
+          commitment: "confirmed",
+        });
+      } catch {
+        failed = true;
+      }
+      assert.isTrue(failed, "approved delegate without attestation or whitelist should be rejected");
+
+      await send(new Transaction().add(
+        createRevokeInstruction(userAta, userKeypair.publicKey, [], TOKEN_2022_PROGRAM_ID)
+      ));
+    });
+
+    it("whitelisted delegate can transfer owner's tokens without attestation", async () => {
+      const addToWhitelistIx = await sdk.addToWhitelistIx(
+        admin.publicKey,
+        mintKeypair.publicKey,
+        delegateKeypair.publicKey
+      );
+      await send(new Transaction().add(addToWhitelistIx));
+
+      const approveTx = new Transaction().add(
+        createApproveCheckedInstruction(
+          userAta,
+          mintKeypair.publicKey,
+          delegateKeypair.publicKey,
+          userKeypair.publicKey,
+          DELEGATE_APPROVE_AMOUNT,
+          MINT_DECIMALS,
+          [],
+          TOKEN_2022_PROGRAM_ID
+        )
+      );
+      await send(approveTx);
+
+      const balanceBefore = await connection.getTokenAccountBalance(recipientAta);
+
+      const transferIx = await createTransferCheckedWithTransferHookInstruction(
+        connection,
+        userAta,
+        mintKeypair.publicKey,
+        recipientAta,
+        delegateKeypair.publicKey,
+        BigInt(1_000_000),
+        MINT_DECIMALS,
+        [],
+        "confirmed",
+        TOKEN_2022_PROGRAM_ID
+      );
+
+      const tx = new Transaction().add(transferIx);
+      tx.feePayer = admin.publicKey;
+      const { blockhash } = await connection.getLatestBlockhash();
+      tx.recentBlockhash = blockhash;
+
+      const sig = await sendAndConfirmTransaction(connection, tx, [admin, delegateKeypair], {
+        commitment: "confirmed",
+      });
+      assert.isString(sig, "whitelisted delegate transfer should succeed");
+
+      const balanceAfter = await connection.getTokenAccountBalance(recipientAta);
+      assert.equal(
+        BigInt(balanceAfter.value.amount) - BigInt(balanceBefore.value.amount),
+        BigInt(1_000_000)
+      );
+
+      await send(new Transaction().add(
+        createRevokeInstruction(userAta, userKeypair.publicKey, [], TOKEN_2022_PROGRAM_ID)
+      ));
+      const removeFromWhitelistIx = await sdk.removeFromWhitelistIx(
+        admin.publicKey,
+        mintKeypair.publicKey,
+        delegateKeypair.publicKey
+      );
+      await send(new Transaction().add(removeFromWhitelistIx));
+    });
+
+    it("attested delegate can transfer owner's tokens", async () => {
+      await createAttestationViaCredentialSigner(delegateKeypair, TEST_SESSION_4);
+
+      const approveTx = new Transaction().add(
+        createApproveCheckedInstruction(
+          userAta,
+          mintKeypair.publicKey,
+          delegateKeypair.publicKey,
+          userKeypair.publicKey,
+          DELEGATE_APPROVE_AMOUNT,
+          MINT_DECIMALS,
+          [],
+          TOKEN_2022_PROGRAM_ID
+        )
+      );
+      await send(approveTx);
+
+      const balanceBefore = await connection.getTokenAccountBalance(recipientAta);
+
+      const transferIx = await createTransferCheckedWithTransferHookInstruction(
+        connection,
+        userAta,
+        mintKeypair.publicKey,
+        recipientAta,
+        delegateKeypair.publicKey,
+        BigInt(1_000_000),
+        MINT_DECIMALS,
+        [],
+        "confirmed",
+        TOKEN_2022_PROGRAM_ID
+      );
+
+      const tx = new Transaction().add(transferIx);
+      tx.feePayer = admin.publicKey;
+      const { blockhash } = await connection.getLatestBlockhash();
+      tx.recentBlockhash = blockhash;
+
+      const sig = await sendAndConfirmTransaction(connection, tx, [admin, delegateKeypair], {
+        commitment: "confirmed",
+      });
+      assert.isString(sig, "attested delegate transfer should succeed");
+
+      const balanceAfter = await connection.getTokenAccountBalance(recipientAta);
+      assert.equal(
+        BigInt(balanceAfter.value.amount) - BigInt(balanceBefore.value.amount),
+        BigInt(1_000_000)
+      );
+
+      await send(new Transaction().add(
+        createRevokeInstruction(userAta, userKeypair.publicKey, [], TOKEN_2022_PROGRAM_ID)
+      ));
+    });
+  });
 
   describe("Security: transfer with wrong credential/schema/sas_program", () => {
     it("rejects transfer after config is updated to wrong values", async () => {
