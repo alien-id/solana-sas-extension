@@ -75,20 +75,4 @@ pub mod alien_id_transfer_hook {
     pub fn transfer_hook(ctx: Context<TransferHook>, amount: u64) -> Result<()> {
         transfer_hook::handler(ctx, amount)
     }
-
-    pub fn fallback<'info>(
-        program_id: &Pubkey,
-        accounts: &'info [AccountInfo<'info>],
-        data: &[u8],
-    ) -> Result<()> {
-        let instruction = TransferHookInstruction::unpack(data)?;
-
-        match instruction {
-            TransferHookInstruction::Execute { amount } => {
-                let amount_bytes = amount.to_le_bytes();
-                __private::__global::transfer_hook(program_id, accounts, &amount_bytes)
-            }
-            _ => Err(ProgramError::InvalidInstructionData.into()),
-        }
-    }
 }
