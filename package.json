@@ -7,7 +7,11 @@
     "deploy:2:init-hook": "node -r ts-node/register deploy/2_initialize_transfer_hook.ts",
     "deploy:3:transfer-authority": "node -r ts-node/register deploy/3_transfer_authority_walien_mint.ts",
     "deploy:4:add-metadata": "node -r ts-node/register deploy/4_add_metadata_walien_mint.ts",
-    "deploy:5:add-to-whitelist": "node -r ts-node/register deploy/5_add_to_whitelist.ts"
+    "deploy:5:add-to-whitelist": "node -r ts-node/register deploy/5_add_to_whitelist.ts",
+    "deploy:6:update-hook": "node -r ts-node/register deploy/6_update_transfer_hook.ts",
+    "meteora:1:create-position": "node -r ts-node/register meteora/1_create_position.ts",
+    "meteora:2:swap": "node -r ts-node/register meteora/2_swap.ts",
+    "meteora:3:whitelist-pool-authority": "node -r ts-node/register meteora/3_whitelist_pool_authority.ts"
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.32.1",
@@ -15,6 +19,7 @@
     "@metaplex-foundation/umi": "^1.5.1",
     "@metaplex-foundation/umi-bundle-defaults": "^1.5.1",
     "@metaplex-foundation/umi-uploader-arweave-via-turbo": "^1.5.1",
+    "@meteora-ag/dlmm": "^1.9.4",
     "@noble/ed25519": "^2.3.0",
     "@solana/kit": "^2.1.0",
     "@solana/signers": "^2.1.1",

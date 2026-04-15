@@ -26,7 +26,7 @@ security_txt! {
     source_code: "https://github.com/alien-id/solana-sas-extension"
 }
 
-declare_id!("BBuax7pfatrjWLx2KLNrKopdQz9eLmtDcC93wughEP7F");
+declare_id!("31Cqsu7GUpbDxFF9LAzfKLP4ThcpPLQ69NK1Fuov3Cp9");
 
 #[program]
 pub mod alien_id_transfer_hook {
